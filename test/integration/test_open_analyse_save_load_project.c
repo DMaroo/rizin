@@ -37,22 +37,19 @@ bool test_open_analyse_save() {
 	size_t functions_count_expect = rz_list_length(functions);
 
 	// 4. Save into the project
-	if (!rz_file_exists(".tmp/")) {
+	if (!rz_file_is_directory(".tmp" RZ_SYS_DIR)) {
 		mu_assert_true(rz_sys_mkdir(".tmp/"), "create tmp directory");
 	}
 	RzProjectErr err = rz_project_save_file(core, ".tmp/test_open_analyse.rzdb");
 	mu_assert_eq(err, RZ_PROJECT_ERR_SUCCESS, "project save err");
 
 	// 5. Close the file
-	rz_core_file_free(file);
+	rz_core_file_close(file);
 	rz_core_free(core);
 
-	// 6. Open the file again
+	// 6. Create a new core
 	core = rz_core_new();
 	mu_assert_notnull(core, "new RzCore instance");
-	file = rz_core_file_open(core, fpath, RZ_PERM_R, loadaddr);
-	mu_assert_notnull(file, "open file");
-	rz_core_bin_load(core, fpath, loadaddr);
 
 	// 7. Load the previously saved project
 	RzSerializeResultInfo *res = rz_serialize_result_info_new();
@@ -69,7 +66,6 @@ bool test_open_analyse_save() {
 
 	// 10. Exit
 	rz_serialize_result_info_free(res);
-	rz_core_file_free(file);
 	rz_core_free(core);
 	mu_end;
 }

@@ -3,6 +3,14 @@
 
 #include "rz_test.h"
 #include <assert.h>
+#include <rz_cons.h>
+
+#define Color_INSERT   Color_BGREEN
+#define Color_DELETE   Color_BRED
+#define Color_BGINSERT "\x1b[48;5;22m"
+#define Color_BGDELETE "\x1b[48;5;52m"
+#define Color_HLINSERT Color_BGINSERT Color_INSERT
+#define Color_HLDELETE Color_BGDELETE Color_DELETE
 
 #define WORKERS_DEFAULT        8
 #define RIZIN_CMD_DEFAULT      "rizin"
@@ -40,7 +48,6 @@ static void interact(RzTestState *state);
 static void interact_fix(RzTestResultInfo *result, RzPVector *fixup_results);
 static void interact_break(RzTestResultInfo *result, RzPVector *fixup_results);
 static void interact_commands(RzTestResultInfo *result, RzPVector *fixup_results);
-static void interact_diffchar(RzTestResultInfo *result);
 
 static int help(bool verbose) {
 	printf("Usage: rz-test [-qvVnL] [-j threads] [test file/dir | @test-type]\n");
@@ -80,7 +87,10 @@ static bool rz_test_chdir(const char *argv0) {
 	char src_path[PATH_MAX];
 	char *rz_test_path = rz_file_path(argv0);
 	bool found = false;
-	if (readlink(rz_test_path, src_path, sizeof(src_path)) != -1) {
+
+	ssize_t linklen = readlink(rz_test_path, src_path, sizeof(src_path) - 1);
+	if (linklen != -1) {
+		src_path[linklen] = '\0';
 		char *p = strstr(src_path, RZ_SYS_DIR "binrz" RZ_SYS_DIR "rz-test" RZ_SYS_DIR "rz-test");
 		if (p) {
 			*p = 0;
@@ -94,6 +104,8 @@ static bool rz_test_chdir(const char *argv0) {
 				}
 			}
 		}
+	} else {
+		eprintf("Cannot follow the link %s\n", src_path);
 	}
 	free(rz_test_path);
 	return found;
@@ -603,84 +615,33 @@ static RzThreadFunctionRet worker_th(RzThread *th) {
 	return RZ_TH_STOP;
 }
 
-static void print_diff(const char *actual, const char *expected, bool diffchar, const char *regexp) {
-	RzDiff *d = rz_diff_new();
-#ifdef __WINDOWS__
-	static const char *diff_cmd[] = {
-		"git", "diff", "--no-index", NULL
-	};
-	d->diff_cmd = diff_cmd;
-#endif
+static void print_diff(const char *actual, const char *expected, const char *regexp) {
+	RzDiff *d = NULL;
+	char *uni = NULL;
 	const char *output = actual;
+
 	if (regexp) {
 		RzList *matches = rz_regex_get_match_list(regexp, "e", actual);
 		output = rz_list_to_str(matches, '\0');
 		rz_list_free(matches);
 	}
 
-	if (diffchar) {
-		RzDiffChar *diff = rz_diffchar_new((const ut8 *)expected, (const ut8 *)output);
-		if (diff) {
-			rz_diff_free(d);
-			rz_diffchar_print(diff);
-			rz_diffchar_free(diff);
-			goto cleanup;
-		}
-		static const char *diff_cmd_char[] = {
-			"git", "diff", "--no-index", "--word-diff=porcelain", "--word-diff-regex=.", NULL
-		};
-		d->diff_cmd = diff_cmd_char;
+	d = rz_diff_lines_new(expected, output, NULL);
+	if (!d) {
+		goto cleanup;
 	}
-	char *uni = rz_diff_buffers_to_string(d, (const ut8 *)expected, (int)strlen(expected),
-		(const ut8 *)output, (int)strlen(output));
-	rz_diff_free(d);
 
-	RzList *lines = rz_str_split_duplist(uni, "\n", false);
-	RzListIter *it;
-	char *line;
-	bool header_found = false;
-	rz_list_foreach (lines, it, line) {
-		if (!header_found) {
-			if (rz_str_startswith(line, "+++ ")) {
-				header_found = true;
-			}
-			continue;
-		}
-		if (rz_str_startswith(line, "@@ ") && rz_str_endswith(line, " @@")) {
-			printf("%s%s%s\n", Color_CYAN, line, Color_RESET);
-			continue;
-		}
-		bool color = true;
-		char c = *line;
-		switch (c) {
-		case '+':
-			printf("%s" Color_INSERT, diffchar ? Color_BGINSERT : "");
-			break;
-		case '-':
-			printf("%s" Color_DELETE, diffchar ? Color_BGDELETE : "");
-			break;
-		case '~': // can't happen if !diffchar
-			printf("\n");
-			continue;
-		default:
-			color = false;
-			break;
-		}
-		if (diffchar) {
-			printf("%s", *line ? line + 1 : "");
-		} else {
-			printf("%s\n", line);
-		}
-		if (color) {
-			printf("%s", Color_RESET);
-		}
+	uni = rz_diff_unified_text(d, "expected", "actual", false, true);
+	if (!uni) {
+		goto cleanup;
 	}
-	rz_list_free(lines);
+	puts(uni);
 	free(uni);
-	printf("\n");
+
 cleanup:
+	rz_diff_free(d);
 	if (regexp) {
-		RZ_FREE(output);
+		free((char *)output);
 	}
 }
 
@@ -716,14 +677,14 @@ static void print_result_diff(RzTestRunConfig *config, RzTestResultInfo *result)
 		const char *regexp_out = result->test->cmd_test->regexp_out.value;
 		if (expect && !rz_test_cmp_cmd_output(out, expect, regexp_out)) {
 			printf("-- stdout\n");
-			print_diff(out, expect, false, regexp_out);
+			print_diff(out, expect, regexp_out);
 		}
 		expect = result->test->cmd_test->expect_err.value;
 		const char *err = result->proc_out->err;
 		const char *regexp_err = result->test->cmd_test->regexp_err.value;
 		if (expect && !rz_test_cmp_cmd_output(err, expect, regexp_err)) {
 			printf("-- stderr\n");
-			print_diff(err, expect, false, regexp_err);
+			print_diff(err, expect, regexp_err);
 		} else if (*err) {
 			printf("-- stderr\n%s\n", err);
 		}
@@ -738,7 +699,7 @@ static void print_result_diff(RzTestRunConfig *config, RzTestResultInfo *result)
 			const char *actual = result->asm_out->disasm;
 			if (expect && actual && strcmp(actual, expect)) {
 				printf("-- disassembly\n");
-				print_diff(actual, expect, false, NULL);
+				print_diff(actual, expect, NULL);
 			}
 		}
 		// TODO: assembly
@@ -870,7 +831,6 @@ static void interact(RzTestState *state) {
 		       "(i)gnore " UTF8_SEE_NO_EVIL_MONKEY "    "
 		       "(b)roken " UTF8_SKULL_AND_CROSSBONES UTF8_VS16 UTF8_VS16 UTF8_VS16 "    "
 		       "(c)ommands " UTF8_KEYBOARD UTF8_VS16 "    "
-		       "(d)iffchar " UTF8_LEFT_POINTING_MAGNIFYING_GLASS "    "
 		       "(q)uit " UTF8_DOOR "\n");
 		printf("> ");
 		char buf[0x30];
@@ -896,9 +856,6 @@ static void interact(RzTestState *state) {
 		case 'c':
 			interact_commands(result, &failed_results);
 			break;
-		case 'd':
-			interact_diffchar(result);
-			goto menu;
 		case 'q':
 			goto beach;
 		default:
@@ -1122,12 +1079,4 @@ static void interact_commands(RzTestResultInfo *result, RzPVector *fixup_results
 	replace_cmd_kv_file(result->test->path, test->cmds.line_begin, test->cmds.line_end, "CMDS", newcmds, fixup_results);
 	free(name);
 	free(newcmds);
-}
-
-static void interact_diffchar(RzTestResultInfo *result) {
-	const char *actual = result->proc_out->out;
-	const char *expected = result->test->cmd_test->expect.value;
-	const char *regexp_out = result->test->cmd_test->regexp_out.value;
-	printf("-- stdout\n");
-	print_diff(actual, expected, true, regexp_out);
 }

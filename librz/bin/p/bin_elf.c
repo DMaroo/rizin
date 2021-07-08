@@ -30,7 +30,6 @@ static bool check_buffer(RzBuffer *buf) {
 }
 
 extern struct rz_bin_dbginfo_t rz_bin_dbginfo_elf;
-extern struct rz_bin_write_t rz_bin_write_elf;
 
 static RzBuffer *create(RzBin *bin, const ut8 *code, int codelen, const ut8 *data, int datalen, RzBinArchOptions *opt) {
 	rz_return_val_if_fail(bin && opt && opt->arch, NULL);
@@ -41,7 +40,7 @@ static RzBuffer *create(RzBin *bin, const ut8 *code, int codelen, const ut8 *dat
 	ut16 ehdrsz, phdrsz;
 	ut32 p_vaddr, p_paddr, p_fs, p_fs2;
 	ut32 baddr;
-	RzBuffer *buf = rz_buf_new();
+	RzBuffer *buf = rz_buf_new_with_bytes(NULL, 0);
 
 	bool is_arm = !strcmp(opt->arch, "arm");
 	// XXX: hardcoded
@@ -145,6 +144,8 @@ RzBinPlugin rz_bin_plugin_elf = {
 	.boffset = &boffset,
 	.binsym = &binsym,
 	.entries = &entries,
+	.virtual_files = &virtual_files,
+	.maps = &maps,
 	.sections = &sections,
 	.symbols = &symbols,
 	.minstrlen = 4,
@@ -155,13 +156,11 @@ RzBinPlugin rz_bin_plugin_elf = {
 	.size = &size,
 	.libs = &libs,
 	.relocs = &relocs,
-	.patch_relocs = &patch_relocs,
 	.create = &create,
-	.write = &rz_bin_write_elf,
 	.file_type = &get_file_type,
 	.regstate = &regstate,
-	.section_type_to_string = &Elf_(section_type_to_string),
-	.section_flag_to_rzlist = &Elf_(section_flag_to_rzlist),
+	.section_type_to_string = &Elf_(rz_bin_elf_section_type_to_string),
+	.section_flag_to_rzlist = &Elf_(rz_bin_elf_section_flag_to_rzlist),
 };
 
 #ifndef RZ_PLUGIN_INCORE

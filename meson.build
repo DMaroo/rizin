@@ -55,8 +55,8 @@ version_commit = '0'
 
 gittip = ''
 
-git_dir_exists = run_command(py3_exe, '-c', '__import__("sys").exit(0 if __import__("os").path.isdir(".git") else 1)')
-if git_exe.found() and git_dir_exists.returncode() == 0
+fs = import('fs')
+if git_exe.found() and fs.exists('.git')
   # Get gittip
   git_rev_parse = run_command(py3_exe, git_exe_repo_py, git_exe, repo, 'rev-parse', 'HEAD')
   if git_rev_parse.returncode() == 0
@@ -148,7 +148,7 @@ endif
 
 if get_option('default_library') == 'shared'
   if cc.has_argument('-fvisibility=hidden')
-    add_project_arguments('-fvisibility=hidden', language: 'c')
+    add_global_arguments('-fvisibility=hidden', language: 'c')
   endif
 endif
 
@@ -268,7 +268,7 @@ if get_option('use_libuv')
 endif
 
 has_debugger = get_option('debugger')
-have_ptrace = not ['windows', 'cygwin', 'sunos'].contains(host_machine.system())
+have_ptrace = not ['windows', 'cygwin', 'sunos', 'haiku'].contains(host_machine.system())
 use_ptrace_wrap = ['linux'].contains(host_machine.system())
 
 have_ptrace = have_ptrace and has_debugger
@@ -490,6 +490,7 @@ if host_machine.system() == 'windows'
     build_root / 'librz' / 'config',
     build_root / 'librz' / 'cons',
     build_root / 'librz' / 'core',
+    build_root / 'librz' / 'diff',
     build_root / 'librz' / 'crypto',
     build_root / 'librz' / 'debug',
     build_root / 'librz' / 'egg',
@@ -516,6 +517,7 @@ subdir('librz/crypto')
 subdir('shlr')
 
 subdir('librz/cons')
+subdir('librz/diff')
 subdir('shlr/gdb')
 subdir('librz/io')
 subdir('librz/bp')
@@ -537,8 +539,11 @@ subdir('librz/core')
 
 subdir('librz/analysis/d')
 subdir('librz/asm/d')
+subdir('librz/asm/cpus')
+subdir('librz/asm/platforms')
 subdir('librz/bin/d')
 subdir('librz/syscall/d')
+subdir('librz/reg/d')
 subdir('librz/cons/d')
 subdir('librz/magic/d')
 subdir('librz/flag/d')
@@ -595,6 +600,7 @@ if meson.is_subproject()
       rz_socket_dep,
       rz_syscall_dep,
       rz_type_dep,
+      rz_diff_dep,
       rz_util_dep
     ],
     include_directories: include_directories('.', 'librz/include'),

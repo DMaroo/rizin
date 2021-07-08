@@ -16,7 +16,7 @@ EOF
 RUN
 
 NAME=typelinks
-FILE=-
+FILE==
 CMDS=<<EOF
 e asm.bytes=true
 e asm.arch=x86
@@ -45,7 +45,7 @@ EOF
 RUN
 
 NAME=typelinks 2
-FILE=-
+FILE==
 CMDS=<<EOF
 e asm.bytes=true
 e asm.arch=x86
@@ -75,7 +75,7 @@ EOF
 RUN
 
 NAME=typelinks- test for tlj json
-FILE=-
+FILE==
 CMDS=<<EOF
 wx 41574156415541544989f4555389fd4881eca8030000488b3e64488b042528000000488984249803000031c0e82fb30000488d35d54e0100bf0600000
 s 2
@@ -90,6 +90,7 @@ EOF
 RUN
 
 NAME=List type links
+FILE==
 CMDS=<<EOF
 tl int 0x4
 w test @ 0x10
@@ -103,6 +104,7 @@ EOF
 RUN
 
 NAME=List readable type links
+FILE==
 CMDS=<<EOF
 tl int
 wB -1
@@ -130,7 +132,18 @@ e asm.lines.bb=false
 aa
 s sym.Java_com_app_ndh_NDHActivity_print
 to bins/headers/jni.h
-tl JNINativeInterface 0x464c457f
+
+# TODO: Tracked in https://github.com/rizinorg/rizin/issues/1132
+# This is actually quite wrong, regarding what this function actually does :-)
+# We are manually crafting the canary value such that it looks like a pointer
+# and say that at this pointer there is a JNINativeInterface object, in order
+# to test propagation from a global variable.
+# Do not hesitate to edit this test if you find a better case for testing this.
+e io.cache=1
+wx 37133713 @ reloc.target.__stack_chk_guard
+tl JNINativeInterface 0x13371337
+tl JNINativeInterface 0x464c457f # \x7fELF, the "pointer" when dereferencing addr 0
+
 pdf~JNINativeInterface
 pdr~JNI?
 EOF
@@ -152,7 +165,7 @@ EOF
 RUN
 
 NAME=t
-FILE=-
+FILE==
 CMDS=t~char,double,float,int,long,short,size,uid,void # basic universal types
 EXPECT=<<EOF
 char
@@ -181,7 +194,7 @@ EOF
 RUN
 
 NAME=t <type>
-FILE=-
+FILE==
 CMDS=<<EOF
 t int
 t-*
@@ -196,7 +209,7 @@ EOF
 RUN
 
 NAME=t- enum
-FILE=-
+FILE==
 CMDS=<<EOF
 td "enum pe_machine { IMAGE_FILE_MACHINE_IA64=0x200, IMAGE_FILE_MACHINE_I386=0x14c };"
 te~?pe_machine
@@ -210,7 +223,7 @@ EOF
 RUN
 
 NAME=t- struct
-FILE=-
+FILE==
 CMDS=<<EOF
 t-*
 td "struct three_elements{int x; char y; float z;}"
@@ -223,7 +236,7 @@ EOF
 RUN
 
 NAME=t- union
-FILE=-
+FILE==
 CMDS=<<EOF
 td "union xoo{int x; int y; int z;}"
 tk *~union
@@ -242,7 +255,7 @@ EOF
 RUN
 
 NAME=typedef
-FILE=-
+FILE==
 CMDS=<<EOF
 td "typedef int Abracadabra"
 t- Abracadabra
@@ -254,7 +267,7 @@ EOF
 RUN
 
 NAME=t-*
-FILE=-
+FILE==
 CMDS=<<EOF
 td "enum pe_machine { IMAGE_FILE_MACHINE_IA64=0x200, IMAGE_FILE_MACHINE_I386=0x14c };"
 t-*
@@ -265,7 +278,7 @@ EOF
 RUN
 
 NAME=teb
-FILE=-
+FILE==
 CMDS=<<EOF
 td "enum pe_machine { IMAGE_FILE_MACHINE_IA64=0x200, IMAGE_FILE_MACHINE_I386=0x14c };"
 teb pe_machine IMAGE_FILE_MACHINE_I386
@@ -276,7 +289,7 @@ EOF
 RUN
 
 NAME=te
-FILE=-
+FILE==
 CMDS=<<EOF
 td "enum pe_machine { IMAGE_FILE_MACHINE_IA64=0x200, IMAGE_FILE_MACHINE_I386=0x14c };"
 te pe_machine 0x14c
@@ -287,7 +300,7 @@ EOF
 RUN
 
 NAME=tef
-FILE=-
+FILE==
 CMDS=<<EOF
 td "enum FOO { A=1, B=0x100, C=0xFF, D=4, E=5 };"
 td "enum BAR { G=0x800, Z=0xEE, P=4, E=5 };"
@@ -307,7 +320,7 @@ EOF
 RUN
 
 NAME=tej
-FILE=-
+FILE==
 CMDS=<<EOF
 td "enum FOO { A=1, B=0x100, C=0xFF, D=4, E=5 };"
 td "enum BAR { G=0x800, Z=0xEE, P=4, E=5 };"
@@ -323,7 +336,7 @@ EOF
 RUN
 
 NAME=tf and tfk
-FILE=-
+FILE==
 CMDS=<<EOF
 tf write
 tfk write
@@ -339,7 +352,7 @@ EOF
 RUN
 
 NAME=tt
-FILE=-
+FILE==
 CMDS=<<EOF
 td "typedef char FILE_NAME;"
 tt FILE_NAME
@@ -353,7 +366,7 @@ EOF
 RUN
 
 NAME=td struct
-FILE=-
+FILE==
 CMDS=<<EOF
 t-*
 td "struct test_struct{int x;int y;};"
@@ -365,7 +378,7 @@ EOF
 RUN
 
 NAME=enum32
-FILE=-
+FILE==
 CMDS=<<EOF
 td "enum v { t=0x123, p=0x321 };"
 te~?
@@ -382,7 +395,7 @@ EOF
 RUN
 
 NAME=enum64
-FILE=-
+FILE==
 CMDS=<<EOF
 td "enum v { t=0x8000000000000001, p=0x8000000000000008 };"
 te~?
@@ -397,7 +410,7 @@ EOF
 RUN
 
 NAME=to error.h
-FILE=-
+FILE==
 CMDS=<<EOF
 to bins/other/error.h
 t~char,double,float,int,long,short,size,uid,void # basic universal types
@@ -444,7 +457,7 @@ EOF
 RUN
 
 NAME=to test.h
-FILE=-
+FILE==
 CMDS=<<EOF
 to bins/other/test.h
 t~char,double,float,int,long,short,size,uid,void # basic universal types
@@ -487,7 +500,7 @@ EOF
 RUN
 
 NAME=t*
-FILE=-
+FILE==
 CMDS=<<EOF
 t-*
 tk a=b
@@ -499,7 +512,7 @@ EOF
 RUN
 
 NAME=unions
-FILE=-
+FILE==
 CMDS=<<EOF
 td "union x{float a;int b;}"
 tu
@@ -510,7 +523,7 @@ EOF
 RUN
 
 NAME=Types not reloaded when arch is the same
-FILE=-
+FILE==
 CMDS=<<EOF
 e asm.archx86
 e analysis.arch=x86
@@ -528,7 +541,7 @@ EOF
 RUN
 
 NAME=td twice
-FILE=-
+FILE==
 CMDS=<<EOF
 td "int foo(int bar);"
 td "int foo(int bar);"
@@ -546,7 +559,7 @@ EOF
 RUN
 
 NAME=struct of struct with ts and pf
-FILE=-
+FILE==
 CMDS=<<EOF
 td "struct bar { int a; int b; };"
 td "struct foo { int x; struct bar moo; };"
@@ -564,7 +577,7 @@ EOF
 RUN
 
 NAME=Array of struct with ts
-FILE=-
+FILE==
 CMDS=<<EOF
 td "struct bar { int a; int b; };"
 td "struct foo { int x; struct bar moo[2]; };"
@@ -588,7 +601,7 @@ EOF
 RUN
 
 NAME=te <enum>
-FILE=-
+FILE==
 CMDS=<<EOF
 td "enum Foo {COW=1,BAR=2};"
 te
@@ -602,7 +615,7 @@ EOF
 RUN
 
 NAME=te <enum> <value>
-FILE=-
+FILE==
 CMDS=<<EOF
 td "enum Foo {COW=1,BAR=2};"
 te Foo 1
@@ -613,7 +626,7 @@ EOF
 RUN
 
 NAME=teb <enum> <name>
-FILE=-
+FILE==
 CMDS=<<EOF
 td "enum Foo {COW=1,BAR=2};"
 teb Foo COW
@@ -624,7 +637,7 @@ EOF
 RUN
 
 NAME=tp
-FILE=-
+FILE==
 CMDS=<<EOF
 td "struct person { int age; char name[10]; }"
 s 14
@@ -643,7 +656,7 @@ EOF
 RUN
 
 NAME=tpv
-FILE=-
+FILE==
 CMDS=<<EOF
 td "struct s16ui { uint16_t a_u; int16_t b_i; uint16_t c_u; int16_t d_i;}"
 td "struct s16iu { int16_t a_i; uint16_t b_u; int16_t c_i; uint16_t d_u;}"
@@ -780,7 +793,7 @@ EOF
 RUN
 
 NAME=tpx test
-FILE=-
+FILE==
 CMDS=<<EOF
 td "struct foo {char* a; int b;}"
 tpx foo 41414141441414141414420010000000
@@ -792,7 +805,7 @@ EOF
 RUN
 
 NAME=aht and arm
-FILE=-
+FILE==
 CMDS=<<EOF
 e asm.bytes=true
 e asm.arch=arm
@@ -812,7 +825,7 @@ EOF
 RUN
 
 NAME=aht and mips
-FILE=-
+FILE==
 CMDS=<<EOF
 e asm.bytes=true
 e asm.arch=mips
@@ -833,7 +846,7 @@ EOF
 RUN
 
 NAME=struct offset for dst operand with aht
-FILE=-
+FILE==
 CMDS=<<EOF
 e asm.bytes=true
 e asm.arch=x86
@@ -857,7 +870,7 @@ EOF
 RUN
 
 NAME=struct offset propagate via tl
-FILE=-
+FILE==
 CMDS=<<EOF
 e asm.arch=x86
 e asm.bytes=true
@@ -880,7 +893,7 @@ EOF
 RUN
 
 NAME=aat with single struct
-FILE=-
+FILE==
 CMDS=<<EOF
 e asm.bytes=true
 e asm.arch=x86
@@ -904,7 +917,7 @@ EOF
 RUN
 
 NAME=aat with multiple struct
-FILE=-
+FILE==
 CMDS=<<EOF
 e asm.arch=x86
 e asm.bytes=true
@@ -1002,7 +1015,7 @@ EOF
 RUN
 
 NAME=ts function pointer test
-FILE=-
+FILE==
 CMDS=<<EOF
 e asm.bits=64
 ws hello @ 0xc
@@ -1019,7 +1032,7 @@ EOF
 RUN
 
 NAME=ts general pointers test
-FILE=-
+FILE==
 CMDS=<<EOF
 td "struct normal {int a;char b;};"
 td "struct pointer {char *y;struct normal *obj;};"
@@ -1031,7 +1044,7 @@ EOF
 RUN
 
 NAME=tsc test
-FILE=-
+FILE==
 CMDS=<<EOF
 td "struct three_elements{int x; char y; float z;}"
 tsc three_elements
@@ -1046,7 +1059,7 @@ EOF
 RUN
 
 NAME=tsc with array
-FILE=-
+FILE==
 CMDS=<<EOF
 td "struct with_array{int x; char y[50]; float z;}"
 tsc with_array
@@ -1061,7 +1074,7 @@ EOF
 RUN
 
 NAME=tec test
-FILE=-
+FILE==
 CMDS=<<EOF
 td "enum Foo {COW=1,BAR=2};"
 tec Foo
@@ -1075,7 +1088,7 @@ EOF
 RUN
 
 NAME=ted test
-FILE=-
+FILE==
 CMDS=<<EOF
 td "enum Foo {COW=1,BAR=2};"
 ted Foo
@@ -1086,7 +1099,7 @@ EOF
 RUN
 
 NAME=tuc test
-FILE=-
+FILE==
 CMDS=<<EOF
 td "union x{int x; int y; int z;}"
 tuc x
@@ -1101,7 +1114,7 @@ EOF
 RUN
 
 NAME=ttc test
-FILE=-
+FILE==
 CMDS=<<EOF
 td "typedef char FILE_NAME;"
 ttc FILE_NAME
@@ -1112,7 +1125,7 @@ EOF
 RUN
 
 NAME=tcd test
-FILE=-
+FILE==
 CMDS=<<EOF
 t-*
 td "typedef char FILE_NAME;"
@@ -1130,7 +1143,7 @@ EOF
 RUN
 
 NAME=typedef struct
-FILE=-
+FILE==
 CMDS=<<EOF
 to bins/headers/12272.h
 ts A
@@ -1162,7 +1175,7 @@ EOF
 RUN
 
 NAME=typedef struct double header
-FILE=-
+FILE==
 CMDS=<<EOF
 to bins/headers/hdr1.h
 to bins/headers/hdr2.h
@@ -1425,7 +1438,7 @@ EOF
 RUN
 
 NAME=aaft io.va side effect
-FILE=-
+FILE==
 ARGS=-eio.va=0 -a x86 -b 64
 CMDS=<<EOF
 af
@@ -1628,6 +1641,7 @@ EOF
 RUN
 
 NAME=types size
+FILE==
 CMDS=<<EOF
 td "struct s1 { int a; int size; int b; };"
 tk~struct.s1
@@ -1724,7 +1738,7 @@ EOF
 RUN
 
 NAME=td crash
-FILE=-
+FILE==
 CMDS=<<EOF
 td "struct;"
 td "struct crash __attribute__((packed)) { };"
@@ -1758,7 +1772,7 @@ EOF
 RUN
 
 NAME=td union
-FILE=-
+FILE==
 CMDS=<<EOF
 td "union foo {int a;char b;}"
 tu*~foo
@@ -1781,7 +1795,7 @@ EOF
 RUN
 
 NAME=td uint64_t
-FILE=-
+FILE==
 CMDS=<<EOF
 wx 0xa00f
 wx 0x401f @ 0x4
@@ -1799,7 +1813,7 @@ EOF
 RUN
 
 NAME=td empty struct
-FILE=-
+FILE==
 CMDS=<<EOF
 wx 0xa00f
 wx 0x401f @ 0x4
@@ -1851,7 +1865,7 @@ EOF
 RUN
 
 NAME=aht aligned
-FILE=-
+FILE==
 CMDS=<<EOF
 e asm.arch=x86
 e asm.bytes=true
@@ -1879,7 +1893,8 @@ EOF
 RUN
 
 NAME=ahts nested
-FILE=-
+BROKEN=1
+FILE==
 CMDS=<<EOF
 td "struct foo {int bar;int cow;};"
 td "struct spam {int ham;struct foo _foo;int eggs;};"

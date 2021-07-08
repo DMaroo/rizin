@@ -354,12 +354,6 @@ static int rabin_do_operation(RzBin *bin, const char *op, int rad, const char *o
 	}
 
 	switch (arg[0]) {
-	case 'e':
-		rc = rz_bin_wr_entry(bin, rz_num_math(NULL, ptr));
-		if (rc) {
-			rc = rz_bin_wr_output(bin, output);
-		}
-		break;
 	case 'd':
 		if (!ptr) {
 			goto _rabin_do_operation_error;
@@ -383,25 +377,6 @@ static int rabin_do_operation(RzBin *bin, const char *op, int rad, const char *o
 			goto _rabin_do_operation_error;
 		}
 		break;
-	case 'a':
-		if (!ptr) {
-			goto _rabin_do_operation_error;
-		}
-		switch (*ptr) {
-		case 'l':
-			if (!ptr2 || !rz_bin_wr_addlib(bin, ptr2)) {
-				goto error;
-			}
-			rc = rz_bin_wr_output(bin, output);
-			break;
-		default:
-			goto _rabin_do_operation_error;
-		}
-		break;
-	case 'R':
-		rz_bin_wr_rpath_del(bin);
-		rc = rz_bin_wr_output(bin, output);
-		break;
 	case 'C': {
 		RzBinFile *cur = rz_bin_cur(bin);
 		RzBinPlugin *plg = rz_bin_file_cur_plugin(cur);
@@ -410,7 +385,11 @@ static int rabin_do_operation(RzBin *bin, const char *op, int rad, const char *o
 			if (cur->xtr_data) {
 				// load the first one
 				RzBinXtrData *xtr_data = rz_list_get_n(cur->xtr_data, 0);
-				if (xtr_data && !xtr_data->loaded && !rz_bin_file_object_new_from_xtr_data(bin, cur, UT64_MAX, rz_bin_get_laddr(bin), xtr_data)) {
+				RzBinObjectLoadOptions obj_opts = {
+					.baseaddr = UT64_MAX,
+					.loadaddr = rz_bin_get_laddr(bin)
+				};
+				if (xtr_data && !xtr_data->loaded && !rz_bin_file_object_new_from_xtr_data(bin, cur, &obj_opts, xtr_data)) {
 					break;
 				}
 			}
@@ -427,18 +406,6 @@ static int rabin_do_operation(RzBin *bin, const char *op, int rad, const char *o
 				free(sign);
 			}
 		}
-	} break;
-	case 'r':
-		rz_bin_wr_scn_resize(bin, ptr, rz_num_math(NULL, ptr2));
-		rc = rz_bin_wr_output(bin, output);
-		break;
-	case 'p': {
-		int perms = (int)rz_num_math(NULL, ptr2);
-		if (!perms) {
-			perms = rz_str_rwx(ptr2);
-		}
-		rz_bin_wr_scn_perms(bin, ptr, perms);
-		rc = rz_bin_wr_output(bin, output);
 	} break;
 	default:
 	_rabin_do_operation_error:
@@ -469,8 +436,7 @@ static int rabin_show_srcline(RzBin *bin, ut64 at) {
 static int __lib_bin_cb(RzLibPlugin *pl, void *user, void *data) {
 	struct rz_bin_plugin_t *hand = (struct rz_bin_plugin_t *)data;
 	RzBin *bin = user;
-	//printf(" * Added (dis)assembly plugin\n");
-	rz_bin_add(bin, hand);
+	rz_bin_plugin_add(bin, hand);
 	return true;
 }
 
@@ -522,13 +488,35 @@ static char *__demangleAs(RzBin *bin, int type, const char *file) {
 }
 
 static void __listPlugins(RzBin *bin, const char *plugin_name, PJ *pj, int rad) {
-	int format = (rad == RZ_MODE_JSON) ? 'j' : rad ? 'q'
-						       : 0;
+	int format = 0;
+	RzCmdStateOutput state = { 0 };
+	if (rad == RZ_MODE_JSON) {
+		format = 'j';
+		state.mode = RZ_OUTPUT_MODE_JSON;
+		state.d.pj = pj_new();
+	} else if (rad) {
+		format = 'q';
+		state.mode = RZ_OUTPUT_MODE_QUIET;
+	} else {
+		state.mode = RZ_OUTPUT_MODE_STANDARD;
+	}
 	bin->cb_printf = (PrintfCallback)printf;
 	if (plugin_name) {
 		rz_bin_list_plugin(bin, plugin_name, pj, format);
 	} else {
-		rz_bin_list(bin, pj, format);
+		rz_core_bin_plugins_print(bin, &state);
+		switch (state.mode) {
+		case RZ_OUTPUT_MODE_JSON: {
+			rz_cons_print(pj_string(state.d.pj));
+			rz_cons_flush();
+			pj_free(state.d.pj);
+			break;
+		}
+		default: {
+			rz_cons_flush();
+			break;
+		}
+		}
 	}
 }
 
@@ -774,13 +762,8 @@ RZ_API int rz_main_rz_bin(int argc, const char **argv) {
 			}
 			if (isBinopHelp(op)) {
 				printf("Usage: iO [expression]:\n"
-				       " e/0x8048000       change entrypoint\n"
 				       " d/s/1024          dump symbols\n"
 				       " d/S/.text         dump section\n"
-				       " r/.data/1024      resize section\n"
-				       " R                 remove RPATH\n"
-				       " a/l/libfoo.dylib  add library\n"
-				       " p/.data/rwx       change section permissions\n"
 				       " c                 show Codesign data\n"
 				       " C                 show LDID entitlements\n");
 				rz_core_fini(&core);
@@ -837,7 +820,7 @@ RZ_API int rz_main_rz_bin(int argc, const char **argv) {
 
 	PJ *pj = NULL;
 	if (rad == RZ_MODE_JSON) {
-		pj = rz_core_pj_new(&core);
+		pj = pj_new();
 		if (!pj) {
 			return 1;
 		}
@@ -1046,7 +1029,7 @@ RZ_API int rz_main_rz_bin(int argc, const char **argv) {
 			fd = rz_io_fd_get_current(core.io);
 			if (fd == -1) {
 				eprintf("rz_core: Cannot open file '%s'\n", file);
-				rz_core_file_free(fh);
+				rz_core_file_close(fh);
 				rz_core_fini(&core);
 				return 1;
 			}
@@ -1063,18 +1046,15 @@ RZ_API int rz_main_rz_bin(int argc, const char **argv) {
 	rz_bin_load_filter(bin, action);
 
 	RzBinOptions bo;
-	rz_bin_options_init(&bo, fd, baddr, laddr, rawstr);
+	rz_bin_options_init(&bo, fd, baddr, laddr, false, rawstr);
 	bo.xtr_idx = xtr_idx;
 
-	if (!rz_bin_open(bin, file, &bo)) {
-		//if this return false means that we did not return a valid bin object
-		//but we have yet the chance that this file is a fat binary
-		if (!bin->cur || !bin->cur->xtr_data) {
-			eprintf("rz-bin: Cannot open file\n");
-			rz_core_file_free(fh);
-			rz_core_fini(&core);
-			return 1;
-		}
+	RzBinFile *bf = rz_bin_open(bin, file, &bo);
+	if (!bf) {
+		eprintf("rz-bin: Cannot open file\n");
+		rz_core_file_close(fh);
+		rz_core_fini(&core);
+		return 1;
 	}
 	/* required to automatically select a sub-bin when not specified */
 	(void)rz_core_bin_update_arch_bits(&core);
@@ -1083,11 +1063,8 @@ RZ_API int rz_main_rz_bin(int argc, const char **argv) {
 		rz_bin_set_baddr(bin, baddr);
 	}
 	if (rawstr == 2) {
-		RzBinFile *bf = rz_bin_cur(core.bin);
-		if (bf) {
-			bf->strmode = rad;
-			rz_bin_dump_strings(bf, bin->minstrlen, bf->rawstr);
-		}
+		bf->strmode = rad;
+		rz_bin_dump_strings(bf, bin->minstrlen, bf->rawstr);
 	}
 	if (query) {
 		if (rad) {
@@ -1100,7 +1077,7 @@ RZ_API int rz_main_rz_bin(int argc, const char **argv) {
 				sdb_query(bin->cur->sdb, query);
 			}
 		}
-		rz_core_file_free(fh);
+		rz_core_file_close(fh);
 		rz_core_fini(&core);
 		return 0;
 	}
@@ -1180,8 +1157,7 @@ RZ_API int rz_main_rz_bin(int argc, const char **argv) {
 		rabin_show_srcline(bin, at);
 	}
 	if (action & RZ_BIN_REQ_EXTRACT) {
-		RzBinFile *bf = rz_bin_cur(bin);
-		if (bf && bf->xtr_data) {
+		if (bf->xtr_data) {
 			rabin_extract(bin, (!arch && !arch_name && !bits));
 		} else {
 			eprintf(
@@ -1199,7 +1175,7 @@ RZ_API int rz_main_rz_bin(int argc, const char **argv) {
 	}
 	pj_free(pj);
 	rz_cons_flush();
-	rz_core_file_free(fh);
+	rz_core_file_close(fh);
 	rz_core_fini(&core);
 
 	return result;

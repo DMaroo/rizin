@@ -71,7 +71,6 @@ static RzList *sections(RzBinFile *bf) {
 	ptr->paddr = 8 * 4;
 	ptr->vaddr = ptr->paddr;
 	ptr->perm = RZ_PERM_RX; // r-x
-	ptr->add = true;
 	rz_list_append(ret, ptr);
 	// add data segment
 	datasize = rz_buf_read_le32_at(bf->buf, 8);
@@ -85,7 +84,6 @@ static RzList *sections(RzBinFile *bf) {
 		ptr->paddr = textsize + (8 * 4);
 		ptr->vaddr = ptr->paddr;
 		ptr->perm = RZ_PERM_RW;
-		ptr->add = true;
 		rz_list_append(ret, ptr);
 	}
 	// ignore bss or what
@@ -101,7 +99,6 @@ static RzList *sections(RzBinFile *bf) {
 		ptr->paddr = datasize + textsize + (8 * 4);
 		ptr->vaddr = ptr->paddr;
 		ptr->perm = RZ_PERM_R; // r--
-		ptr->add = true;
 		rz_list_append(ret, ptr);
 	}
 	// add spsz segment
@@ -116,7 +113,6 @@ static RzList *sections(RzBinFile *bf) {
 		ptr->paddr = symssize + datasize + textsize + (8 * 4);
 		ptr->vaddr = ptr->paddr;
 		ptr->perm = RZ_PERM_R; // r--
-		ptr->add = true;
 		rz_list_append(ret, ptr);
 	}
 	// add pcsz segment
@@ -131,7 +127,6 @@ static RzList *sections(RzBinFile *bf) {
 		ptr->paddr = spszsize + symssize + datasize + textsize + (8 * 4);
 		ptr->vaddr = ptr->paddr;
 		ptr->perm = RZ_PERM_R; // r--
-		ptr->add = true;
 		rz_list_append(ret, ptr);
 	}
 	return ret;
@@ -201,7 +196,7 @@ static ut64 size(RzBinFile *bf) {
 
 /* inspired in http://www.phreedom.org/solar/code/tinype/tiny.97/tiny.asm */
 static RzBuffer *create(RzBin *bin, const ut8 *code, int codelen, const ut8 *data, int datalen, RzBinArchOptions *opt) {
-	RzBuffer *buf = rz_buf_new();
+	RzBuffer *buf = rz_buf_new_with_bytes(NULL, 0);
 #define B(x, y) rz_buf_append_bytes(buf, (const ut8 *)(x), y)
 #define D(x)    rz_buf_append_ut32(buf, x)
 	D(I_MAGIC); // i386 only atm
@@ -230,6 +225,7 @@ RzBinPlugin rz_bin_plugin_p9 = {
 	.baddr = &baddr,
 	.binsym = &binsym,
 	.entries = &entries,
+	.maps = &rz_bin_maps_of_file_sections,
 	.sections = &sections,
 	.symbols = &symbols,
 	.imports = &imports,

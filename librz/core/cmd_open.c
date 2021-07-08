@@ -3,6 +3,7 @@
 
 #include <rz_bin.h>
 #include <rz_debug.h>
+#include <rz_core.h>
 
 static const char *help_msg_o[] = {
 	"Usage: o", "[com- ] [file] ([offset])", "",
@@ -173,10 +174,12 @@ static const char *help_msg_oonn[] = {
 static void cmd_open_bin(RzCore *core, const char *input) {
 	const char *value = NULL;
 	ut32 binfile_num = -1;
+	RzCmdStateOutput state = { 0 };
 
 	switch (input[1]) {
 	case 'L': // "obL"
-		rz_core_cmd0(core, "iL");
+		state.mode = RZ_OUTPUT_MODE_STANDARD;
+		rz_core_bin_plugins_print(core->bin, &state);
 		break;
 	case '\0': // "ob"
 	case 'q': // "obj"
@@ -217,7 +220,7 @@ static void cmd_open_bin(RzCore *core, const char *input) {
 					*filename = 0;
 					ut64 addr = rz_num_math(core->num, arg);
 					RzBinOptions opt;
-					rz_bin_options_init(&opt, desc->fd, addr, 0, core->bin->rawstr);
+					rz_core_bin_options_init(core, &opt, desc->fd, addr, 0);
 					rz_bin_open_io(core->bin, &opt);
 					rz_io_desc_close(desc);
 					rz_core_cmd0(core, ".is*");
@@ -232,10 +235,8 @@ static void cmd_open_bin(RzCore *core, const char *input) {
 				RzIODesc *desc = rz_io_desc_get(core->io, fd);
 				if (desc) {
 					RzBinOptions opt;
-					opt.baseaddr = baddr;
-					opt.loadaddr = addr;
 					opt.sz = 1024 * 1024 * 1;
-					rz_bin_options_init(&opt, desc->fd, baddr, addr, core->bin->rawstr);
+					rz_core_bin_options_init(core, &opt, desc->fd, baddr, addr);
 					rz_bin_open_io(core->bin, &opt);
 					rz_core_cmd0(core, ".is*");
 				} else {
@@ -247,10 +248,8 @@ static void cmd_open_bin(RzCore *core, const char *input) {
 				RzIODesc *desc = rz_io_desc_get(core->io, fd);
 				if (desc) {
 					RzBinOptions opt;
-					opt.baseaddr = addr;
-					opt.loadaddr = addr;
 					opt.sz = 1024 * 1024 * 1;
-					rz_bin_options_init(&opt, desc->fd, addr, addr, core->bin->rawstr);
+					rz_core_bin_options_init(core, &opt, desc->fd, addr, addr);
 					rz_bin_open_io(core->bin, &opt);
 					rz_core_cmd0(core, ".is*");
 				} else {
@@ -271,7 +270,7 @@ static void cmd_open_bin(RzCore *core, const char *input) {
 			rz_list_foreach (files, iter, _fd) {
 				int fd = (size_t)_fd;
 				RzBinOptions opt;
-				rz_bin_options_init(&opt, fd, core->offset, 0, core->bin->rawstr);
+				rz_core_bin_options_init(core, &opt, fd, core->offset, 0);
 				rz_bin_open_io(core->bin, &opt);
 				rz_core_cmd0(core, ".ies*");
 				break;
@@ -341,11 +340,7 @@ static void cmd_open_bin(RzCore *core, const char *input) {
 			}
 			id = (*value && rz_is_valid_input_num_value(core->num, value)) ? rz_get_input_num_value(core->num, value) : UT32_MAX;
 			RzBinFile *bf = rz_bin_file_find_by_id(core->bin, id);
-			if (!bf) {
-				eprintf("Invalid binid\n");
-				break;
-			}
-			if (!rz_core_bin_delete(core, bf->id)) {
+			if (!bf || !rz_core_bin_delete(core, bf)) {
 				eprintf("Cannot find an RzBinFile associated with that id.\n");
 			}
 		}
@@ -361,7 +356,7 @@ static void cmd_open_bin(RzCore *core, const char *input) {
 		}
 		rz_list_foreach (bin->binfiles, iter, bf) {
 			char temp[64];
-			RzInterval inter = (RzInterval){ bf->o->baddr, bf->o->size };
+			RzInterval inter = (RzInterval){ bf->o->opts.baseaddr, bf->o->size };
 			RzListInfo *info = rz_listinfo_new(bf->file, inter, inter, -1, sdb_itoa(bf->fd, temp, 10));
 			if (!info) {
 				break;
@@ -399,7 +394,8 @@ static void map_list(RzIO *io, int mode, RzPrint *print, int fd) {
 	char *om_cmds = NULL;
 
 	void **it;
-	rz_pvector_foreach_prev(&io->maps, it) { //this must be prev (LIFO)
+	RzPVector *maps = rz_io_maps(io);
+	rz_pvector_foreach_prev(maps, it) { //this must be prev (LIFO)
 		RzIOMap *map = *it;
 		if (fd >= 0 && map->fd != fd) {
 			continue;
@@ -465,21 +461,22 @@ static void cmd_omfg(RzCore *core, const char *input) {
 				: rz_str_rwx(input)
 			: 7;
 		void **it;
+		RzPVector *maps = rz_io_maps(core->io);
 		switch (*input) {
 		case '+':
-			rz_pvector_foreach (&core->io->maps, it) {
+			rz_pvector_foreach (maps, it) {
 				RzIOMap *map = *it;
 				map->perm |= perm;
 			}
 			break;
 		case '-':
-			rz_pvector_foreach (&core->io->maps, it) {
+			rz_pvector_foreach (maps, it) {
 				RzIOMap *map = *it;
 				map->perm &= ~perm;
 			}
 			break;
 		default:
-			rz_pvector_foreach (&core->io->maps, it) {
+			rz_pvector_foreach (maps, it) {
 				RzIOMap *map = *it;
 				map->perm = perm;
 			}
@@ -494,13 +491,14 @@ static void cmd_omf(RzCore *core, const char *input) {
 		return;
 	}
 	char *sp = strchr(arg, ' ');
+	RzPVector *maps = rz_io_maps(core->io);
 	if (sp) {
 		// change perms of Nth map
 		*sp++ = 0;
 		int id = rz_num_math(core->num, arg);
 		int perm = (*sp) ? rz_str_rwx(sp) : RZ_PERM_RWX;
 		void **it;
-		rz_pvector_foreach (&core->io->maps, it) {
+		rz_pvector_foreach (maps, it) {
 			RzIOMap *map = *it;
 			if (map->id == id) {
 				map->perm = perm;
@@ -511,7 +509,7 @@ static void cmd_omf(RzCore *core, const char *input) {
 		// change perms of current map
 		int perm = (arg && *arg) ? rz_str_rwx(arg) : RZ_PERM_RWX;
 		void **it;
-		rz_pvector_foreach (&core->io->maps, it) {
+		rz_pvector_foreach (maps, it) {
 			RzIOMap *map = *it;
 			if (rz_itv_contain(map->itv, core->offset)) {
 				map->perm = perm;
@@ -527,7 +525,8 @@ static void rz_core_cmd_omt(RzCore *core, const char *arg) {
 	rz_table_set_columnsf(t, "nnnnnnnss", "id", "fd", "pa", "pa_end", "size", "va", "va_end", "perm", "name", NULL);
 
 	void **it;
-	rz_pvector_foreach (&core->io->maps, it) {
+	RzPVector *maps = rz_io_maps(core->io);
+	rz_pvector_foreach (maps, it) {
 		RzIOMap *m = *it;
 		ut64 va = rz_itv_begin(m->itv);
 		ut64 va_end = rz_itv_end(m->itv);
@@ -664,7 +663,7 @@ static void cmd_open_map(RzCore *core, const char *input) {
 		case 'q': // "omtq"
 		{
 			const char *arg = rz_str_trim_head_ro(input + 3);
-			char *query = rz_str_newf("%s%s:quiet", arg, *arg ? "," : "");
+			char *query = rz_str_newf("%s%squiet", arg, *arg ? ":" : "");
 			if (query) {
 				rz_core_cmd_omt(core, query);
 			}
@@ -855,7 +854,8 @@ static void cmd_open_map(RzCore *core, const char *input) {
 			return;
 		}
 		void **it;
-		rz_pvector_foreach_prev(&core->io->maps, it) {
+		RzPVector *maps = rz_io_maps(core->io);
+		rz_pvector_foreach_prev(maps, it) {
 			RzIOMap *map = *it;
 			char temp[32];
 			snprintf(temp, sizeof(temp), "%d", map->fd);
@@ -1144,7 +1144,7 @@ RZ_IPI int rz_cmd_open(void *data, const char *input) {
 		if (!strcmp(ptr, "-")) {
 			ptr = "malloc://512";
 		}
-		if ((desc = rz_io_open_at(core->io, ptr, perms, 0644, addr))) {
+		if ((desc = rz_io_open_at(core->io, ptr, perms, 0644, addr, NULL))) {
 			fd = desc->fd;
 		}
 		if (fd == -1) {
@@ -1262,11 +1262,9 @@ RZ_IPI int rz_cmd_open(void *data, const char *input) {
 					RzIODesc *desc = rz_io_desc_get(core->io, fd);
 					if (desc && (desc->perm & RZ_PERM_W)) {
 						void **it;
-						rz_pvector_foreach_prev(&core->io->maps, it) {
+						rz_pvector_foreach (&file->maps, it) {
 							RzIOMap *map = *it;
-							if (map->fd == fd) {
-								map->perm |= RZ_PERM_WX;
-							}
+							map->perm |= RZ_PERM_WX;
 						}
 					} else {
 						eprintf("Error: %s is not writable\n", argv0);
@@ -1316,19 +1314,33 @@ RZ_IPI int rz_cmd_open(void *data, const char *input) {
 		core->print->cb_printf("%s\n", pj_string(pj));
 		pj_free(pj);
 		break;
-	case 'L': // "oL"
+	case 'L': { // "oL"
+		RzCmdStateOutput state = { 0 };
 		if (input[1] == ' ') {
 			if (rz_lib_open(core->lib, input + 2) == -1) {
 				eprintf("Oops\n");
 			}
+			break;
+		}
+		if (input[1] == 'j') {
+			state.mode = RZ_OUTPUT_MODE_JSON;
+			state.d.pj = pj_new();
 		} else {
-			if ('j' == input[1]) {
-				rz_io_plugin_list_json(core->io);
-			} else {
-				rz_io_plugin_list(core->io);
-			}
+			state.mode = RZ_OUTPUT_MODE_STANDARD;
+		}
+		rz_core_io_plugins_print(core->io, &state);
+		switch (state.mode) {
+		case RZ_OUTPUT_MODE_JSON: {
+			rz_cons_println(pj_string(state.d.pj));
+			pj_free(state.d.pj);
+			break;
+		}
+		default: {
+			break;
+		}
 		}
 		break;
+	}
 	case 'i': // "oi"
 		switch (input[1]) {
 		case ' ': // "oi "

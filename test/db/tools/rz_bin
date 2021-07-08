@@ -63,8 +63,8 @@ CMDS=!rz-bin -K md5 -S ${RZ_FILE}
 EXPECT=<<EOF
 [Sections]
 
-nth paddr        size vaddr        vsize perm md5                              name   flags
--------------------------------------------------------------------------------------------
+nth paddr        size vaddr        vsize perm md5                              name   flags                                       
+----------------------------------------------------------------------------------------------------------------------------------
 0   0x00000400  0xa00 0x00401000  0x1000 -r-x 3d6a5b8dc5e41b09659638ad5735e5b5 .text  CNT_CODE,CNT_INITIALIZED_DATA,ALIGN_16BYTES
 1   0x00000e00  0x200 0x00402000  0x1000 -rw- b3c542ba67f2d1a949fa1a25ce22f7e3 .data  CNT_INITIALIZED_DATA,ALIGN_4BYTES
 2   0x00001000  0x200 0x00403000  0x1000 -r-- c9a877a4e945b087b8323830442c88d6 .rdata CNT_INITIALIZED_DATA,ALIGN_4BYTES
@@ -103,8 +103,8 @@ EXPECT=<<EOF
 14
 [Sections]
 
-nth paddr        size vaddr       vsize perm name                        type       flags
------------------------------------------------------------------------------------------
+nth paddr        size vaddr       vsize perm name                        type       flags         
+--------------------------------------------------------------------------------------------------
 0   0x00000000    0x0 0x00000000    0x0 ---- prixfixe.                   NULL       
 1   0x00000134   0x13 0x08048134   0x13 -r-- prixfixe..interp            PROGBITS   alloc
 2   0x00000148   0x20 0x08048148   0x20 -r-- prixfixe..note.ABI-tag      NOTE       alloc
@@ -138,16 +138,16 @@ nth paddr        size vaddr       vsize perm name                        type   
 
 [Segments]
 
-nth paddr        size vaddr       vsize perm name
--------------------------------------------------
-0   0x00000034  0x100 0x08048034  0x100 -r-x prixfixe.PHDR
-1   0x00000134   0x13 0x08048134   0x13 -r-- prixfixe.INTERP
-2   0x00000000  0x59c 0x08048000  0x59c -r-x prixfixe.LOAD0
-3   0x0000059c  0x118 0x0804959c  0x11c -rw- prixfixe.LOAD1
-4   0x000005a8   0xe8 0x080495a8   0xe8 -rw- prixfixe.DYNAMIC
-5   0x00000148   0x44 0x08048148   0x44 -r-- prixfixe.NOTE
-6   0x000004c0   0x2c 0x080484c0   0x2c -r-- prixfixe.GNU_EH_FRAME
-7   0x00000000    0x0 0x00000000    0x0 -rw- prixfixe.GNU_STACK
+nth paddr        size vaddr       vsize perm name                  align  
+--------------------------------------------------------------------------
+0   0x00000034  0x100 0x08048034  0x100 -r-x prixfixe.PHDR         0x4
+1   0x00000134   0x13 0x08048134   0x13 -r-- prixfixe.INTERP       0x1
+2   0x00000000  0x59c 0x08048000  0x59c -r-x prixfixe.LOAD0        0x1000
+3   0x0000059c  0x118 0x0804959c  0x11c -rw- prixfixe.LOAD1        0x1000
+4   0x000005a8   0xe8 0x080495a8   0xe8 -rw- prixfixe.DYNAMIC      0x4
+5   0x00000148   0x44 0x08048148   0x44 -r-- prixfixe.NOTE         0x4
+6   0x000004c0   0x2c 0x080484c0   0x2c -r-- prixfixe.GNU_EH_FRAME 0x4
+7   0x00000000    0x0 0x00000000    0x0 -rw- prixfixe.GNU_STACK    0x4
 8   0x00000000   0x34 0x08048000   0x34 -rw- prixfixe.ehdr
 
 EOF
@@ -323,8 +323,8 @@ FILE=bins/mach0/fatmach0-3true
 CMDS=!rz-bin -a x86 -b 32 -i ${RZ_FILE}
 EXPECT=<<EOF
 [Imports]
-nth vaddr      bind type lib name
----------------------------------
+nth vaddr      bind type lib name             
+----------------------------------------------
 0   0x00001f94 NONE FUNC     exit
 1   ---------- NONE FUNC     dyld_stub_binder
 
@@ -336,8 +336,8 @@ FILE=bins/mach0/fatmach0-3true
 CMDS=!rz-bin -G 0x5000 -i ${RZ_FILE}
 EXPECT=<<EOF
 [Imports]
-nth vaddr      bind type lib name
----------------------------------
+nth vaddr      bind type lib name             
+----------------------------------------------
 0   0x00001f94 NONE FUNC     exit
 1   ---------- NONE FUNC     dyld_stub_binder
 
@@ -383,50 +383,6 @@ CMDS=<<EOF
 !rz-bin -qOr/.data/-1 ${FILE}
 EOF
 EXPECT=<<EOF
-EOF
-RUN
-
-NAME=rz-bin -qOp/.data/rwx on PE32
-FILE=bins/pe/test.exe
-CMDS=<<EOF
-mkdir .tmp
-rm .tmp/rz-bintestpe1.exe
-!rz-bin -qOp/.data/rwx -o.tmp/rz-bintestpe1.exe ${RZ_FILE}
-!rz-bin -S .tmp/rz-bintestpe1.exe
-rm .tmp/rz-bintestpe1.exe
-EOF
-EXPECT=<<EOF
-wx e0000040 @ 0x244
-[Sections]
-
-nth paddr         size vaddr        vsize perm name   flags
------------------------------------------------------------
-0   0x00000400  0x8a00 0x00401000  0x9000 -r-x .text  CNT_CODE
-1   0x00008e00  0x2400 0x0040a000  0x3000 -r-- .rdata CNT_INITIALIZED_DATA
-2   0x0000b200  0x1000 0x0040d000  0x3000 -rwx .data  CNT_INITIALIZED_DATA
-3   0x0000c200   0x200 0x00410000  0x1000 -r-- .rsrc  CNT_INITIALIZED_DATA
-4   0x0000c400   0xe00 0x00411000  0x1000 -r-- .reloc CNT_INITIALIZED_DATA,IMAGE_SCN_MEM_DISCARDABLE
-
-EOF
-RUN
-
-NAME=rz-bin -qOp//8 on PE32+
-FILE=bins/pe/normal64.exe
-CMDS=<<EOF
-mkdir .tmp
-rm .tmp/rz-bintestpe2.exe
-!rz-bin -qOp//8 -o.tmp/rz-bintestpe2.exe ${RZ_FILE}
-!rz-bin -S .tmp/rz-bintestpe2.exe
-rm .tmp/rz-bintestpe2.exe
-EOF
-EXPECT=<<EOF
-wx 10000000 @ 0x16c
-[Sections]
-
-nth paddr        size vaddr        vsize perm name   flags
-----------------------------------------------------------
-0   0x00000200  0x200 0x00401000  0x1000 s--- sect_0 
-
 EOF
 RUN
 
@@ -477,8 +433,8 @@ CMDS=!rz-bin -g ${RZ_FILE}
 EXPECT=<<EOF
 [Sections]
 
-nth paddr        size vaddr       vsize perm name               type       flags
---------------------------------------------------------------------------------
+nth paddr        size vaddr       vsize perm name               type       flags         
+-----------------------------------------------------------------------------------------
 0   0x00000000    0x0 0x00000000    0x0 ----                    NULL       
 1   0x00000134   0x13 0x08048134   0x13 -r-- .interp            PROGBITS   alloc
 2   0x00000148   0x20 0x08048148   0x20 -r-- .note.ABI-tag      NOTE       alloc
@@ -512,16 +468,16 @@ nth paddr        size vaddr       vsize perm name               type       flags
 
 [Segments]
 
-nth paddr        size vaddr       vsize perm name
--------------------------------------------------
-0   0x00000034  0x100 0x08048034  0x100 -r-x PHDR
-1   0x00000134   0x13 0x08048134   0x13 -r-- INTERP
-2   0x00000000  0x59c 0x08048000  0x59c -r-x LOAD0
-3   0x0000059c  0x118 0x0804959c  0x11c -rw- LOAD1
-4   0x000005a8   0xe8 0x080495a8   0xe8 -rw- DYNAMIC
-5   0x00000148   0x44 0x08048148   0x44 -r-- NOTE
-6   0x000004c0   0x2c 0x080484c0   0x2c -r-- GNU_EH_FRAME
-7   0x00000000    0x0 0x00000000    0x0 -rw- GNU_STACK
+nth paddr        size vaddr       vsize perm name         align  
+-----------------------------------------------------------------
+0   0x00000034  0x100 0x08048034  0x100 -r-x PHDR         0x4
+1   0x00000134   0x13 0x08048134   0x13 -r-- INTERP       0x1
+2   0x00000000  0x59c 0x08048000  0x59c -r-x LOAD0        0x1000
+3   0x0000059c  0x118 0x0804959c  0x11c -rw- LOAD1        0x1000
+4   0x000005a8   0xe8 0x080495a8   0xe8 -rw- DYNAMIC      0x4
+5   0x00000148   0x44 0x08048148   0x44 -r-- NOTE         0x4
+6   0x000004c0   0x2c 0x080484c0   0x2c -r-- GNU_EH_FRAME 0x4
+7   0x00000000    0x0 0x00000000    0x0 -rw- GNU_STACK    0x4
 8   0x00000000   0x34 0x08048000   0x34 -rw- ehdr
 
 [Entrypoints]
@@ -536,16 +492,16 @@ vaddr=0x080483b0 paddr=0x000003b0 hvaddr=0x080495a0 hpaddr=0x000005a0 type=fini
 [Main]
 vaddr=0x08048400 paddr=0x00000400
 [Imports]
-nth vaddr      bind   type   lib name
--------------------------------------
+nth vaddr      bind   type   lib name              
+---------------------------------------------------
 1   0x080482d0 GLOBAL FUNC       puts
 2   0x080482e0 WEAK   NOTYPE     __gmon_start__
 3   0x080482f0 GLOBAL FUNC       __libc_start_main
 
 [Symbols]
 
-nth paddr      vaddr      bind   type   size lib name
------------------------------------------------------
+nth paddr      vaddr      bind   type   size lib name                                   
+----------------------------------------------------------------------------------------
 4   0x000004ac 0x080484ac GLOBAL OBJ    4        _IO_stdin_used
 1   0x00000134 0x08048134 LOCAL  SECT   0        .interp
 2   0x00000148 0x08048148 LOCAL  SECT   0        .note.ABI-tag
@@ -612,40 +568,42 @@ nth paddr      vaddr      bind   type   size lib name
 2   0x000002e0 0x080482e0 WEAK   NOTYPE 16       imp.__gmon_start__
 3   0x000002f0 0x080482f0 GLOBAL FUNC   16       imp.__libc_start_main
 [Strings]
-nth paddr      vaddr      len size section type  string
--------------------------------------------------------
+nth paddr      vaddr      len size section type  string       
+--------------------------------------------------------------
 0   0x000004b0 0x080484b0 12  13   .rodata ascii Hello world!
+Name     Value              
+----------------------------
 arch     x86
 baddr    0x8048000
 binsz    4899
 bintype  elf
 bits     32
-canary   false
 class    ELF32
 compiler GCC: (GNU) 4.8.2
-crypto   false
-endian   little
-havecode true
+endian   LE
 intrp    /lib/ld-linux.so.2
 laddr    0x0
 lang     c
-linenum  true
-lsyms    true
 machine  Intel 80386
 maxopsz  16
 minopsz  1
-nx       true
 os       linux
 pcalign  0
-pic      false
-relocs   true
 relro    no
 rpath    NONE
+subsys   linux
+stripped false
+crypto   false
+havecode true
+va       true
 sanitiz  false
 static   false
-stripped false
-subsys   linux
-va       true
+linenum  true
+lsyms    true
+canary   false
+PIE      false
+RELROCS  true
+NX       true
 0x00000000  ELF MAGIC   0x464c457f
 0x00000010  Type        0x0002
 0x00000012  Machine     0x0003
@@ -666,8 +624,8 @@ libc.so.6
 1 library
 [Relocations]
 
-vaddr      paddr      type   name
----------------------------------
+vaddr      paddr      type   name              
+-----------------------------------------------
 0x08049690 0x00000690 SET_32 __gmon_start__
 0x080496a0 0x000006a0 SET_32 puts
 0x080496a4 0x000006a4 SET_32 __gmon_start__
@@ -676,8 +634,8 @@ vaddr      paddr      type   name
 
 4 relocations
 4899
-Version symbols section '.gnu.version' contains 5 entries:
- Addr: 0x08048246  Offset: 0x00000246  Link: 5 (.dynsym)
+Version symbols has 5 entries:
+ Addr: 0x08048246  Offset: 0x00000246
   0x00000000: 0 (*local*)
   0x00000001: 2 (GLIBC_2.0)
   0x00000002: 0 (*local*)
@@ -685,13 +643,13 @@ Version symbols section '.gnu.version' contains 5 entries:
   0x00000004: 1 (*global*)
 
 
-Version need section '.gnu.version_r' contains 1 entries:
- Addr: 0x08048250  Offset: 0x00000250  Link to section: 6 (.dynstr)
-  0x00000000: Version: 1  File: libc.so.6  Cnt: 1
-  0x00000010:   Name: GLIBC_2.0  Flags: none Version: 2
+Version need has 1 entries:
+ Addr: 0x08048250  Offset: 0x00000250
+  0x00000250: Version: 1  File: libc.so.6  Cnt: 1
+  0x00000260:   Name: GLIBC_2.0  Flags: none Version: 2
 Section to Segment mapping:
-Segment      Section
---------------------
+Segment      Section                                                                                                                                                                  
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 PHDR         
 INTERP       .interp 
 LOAD0        .interp .note.ABI-tag .note.gnu.build-id .gnu.hash .dynsym .dynstr .gnu.version .gnu.version_r .rel.dyn .rel.plt .init .plt .text .fini .rodata .eh_frame_hdr .eh_frame 
@@ -723,37 +681,39 @@ NAME=rz-bin -I elf_cpp
 FILE=bins/elf/analysis/a.out.cpp
 CMDS=!rz-bin -I ${RZ_FILE}
 EXPECT=<<EOF
+Name     Value                               
+---------------------------------------------
 arch     x86
 baddr    0x0
 binsz    7051
 bintype  elf
 bits     64
-canary   false
 class    ELF64
 compiler GCC: (Ubuntu 7.3.0-16ubuntu3) 7.3.0
-crypto   false
-endian   little
-havecode true
+endian   LE
 intrp    /lib64/ld-linux-x86-64.so.2
 laddr    0x0
 lang     c++
-linenum  true
-lsyms    true
 machine  AMD x86-64 architecture
 maxopsz  16
 minopsz  1
-nx       true
 os       linux
 pcalign  0
-pic      true
-relocs   true
 relro    full
 rpath    NONE
+subsys   linux
+stripped false
+crypto   false
+havecode true
+va       true
 sanitiz  false
 static   false
-stripped false
-subsys   linux
-va       true
+linenum  true
+lsyms    true
+canary   false
+PIE      true
+RELROCS  true
+NX       true
 EOF
 RUN
 
@@ -761,37 +721,39 @@ NAME=rz-bin -I asan
 FILE=bins/elf/analysis/a.out.asan
 CMDS=!rz-bin -I ${RZ_FILE}
 EXPECT=<<EOF
+Name     Value                                                                      
+------------------------------------------------------------------------------------
 arch     x86
 baddr    0x400000
 binsz    1603255
 bintype  elf
 bits     64
-canary   false
 class    ELF64
 compiler GCC: (Debian 8.2.0-5) 8.2.0 clang version 6.0.1-6 (tags/RELEASE_601/final)
-crypto   false
-endian   little
-havecode true
+endian   LE
 intrp    /lib64/ld-linux-x86-64.so.2
 laddr    0x0
 lang     c++
-linenum  true
-lsyms    true
 machine  AMD x86-64 architecture
 maxopsz  16
 minopsz  1
-nx       true
 os       linux
 pcalign  0
-pic      false
-relocs   true
 relro    partial
 rpath    NONE
+subsys   linux
+stripped false
+crypto   false
+havecode true
+va       true
 sanitiz  true
 static   false
-stripped false
-subsys   linux
-va       true
+linenum  true
+lsyms    true
+canary   false
+PIE      false
+RELROCS  true
+NX       true
 EOF
 RUN
 
@@ -799,34 +761,36 @@ NAME=rz-bin -I apple-blocks-ext
 FILE=bins/mach0/mach0-blocks-ext
 CMDS=!rz-bin -I ${RZ_FILE}
 EXPECT=<<EOF
+Name     Value           
+-------------------------
 arch     x86
 baddr    0x100000000
 binsz    9828
 bintype  mach0
 bits     64
-canary   false
 class    MACH064
-crypto   false
-endian   little
-havecode true
+endian   LE
 intrp    /usr/lib/dyld
 laddr    0x0
 lang     c++ with blocks
-linenum  false
-lsyms    false
 machine  x86 64 all
 maxopsz  16
 minopsz  1
-nx       false
 os       darwin
 pcalign  0
-pic      true
-relocs   false
+subsys   darwin
+stripped false
+crypto   false
+havecode true
+va       true
 sanitiz  false
 static   false
-stripped false
-subsys   darwin
-va       true
+linenum  false
+lsyms    false
+canary   false
+PIE      true
+RELROCS  false
+NX       false
 EOF
 RUN
 
@@ -937,15 +901,15 @@ EOF
 RUN
 
 NAME=rz-bin -O bad op
-FILE=-
-CMDS=!rz-bin -O bad_op -
+FILE==
+CMDS=!rz-bin -O bad_op =
 EXPECT_ERR=<<EOF
 Unknown operation. use -O help
 EOF
 RUN
 
 NAME=rz-bin -v
-FILE=-
+FILE==
 CMDS=!rz-bin -v | grep -c build
 EXPECT=<<EOF
 1
@@ -953,7 +917,7 @@ EOF
 RUN
 
 NAME=rz-bin -L
-FILE=-
+FILE==
 CMDS=!rz-bin -L | grep -c any
 EXPECT=<<EOF
 1
@@ -961,7 +925,7 @@ EOF
 RUN
 
 NAME=rz-bin -Lq
-FILE=-
+FILE==
 CMDS=!rz-bin -Lq | grep -c any
 EXPECT=<<EOF
 1
@@ -969,7 +933,7 @@ EOF
 RUN
 
 NAME=rz-bin -Lj
-FILE=-
+FILE==
 CMDS=!rz-bin -Lj | grep -c any
 EXPECT=<<EOF
 1
@@ -977,8 +941,8 @@ EOF
 RUN
 
 NAME=rz-bin -Lj any
-FILE=-
-CMDS=!rz-bin -Lj Dummy | grep -c Dummy
+FILE==
+CMDS=!rz-bin -Lj any | grep -c Dummy
 EXPECT=<<EOF
 1
 EOF
@@ -998,8 +962,8 @@ CMDS=!rz-bin -E ${RZ_FILE}
 EXPECT=<<EOF
 [Exports]
 
-nth paddr      vaddr      bind   type size lib     name
--------------------------------------------------------
+nth paddr      vaddr      bind   type size lib     name   
+----------------------------------------------------------
 0   0x00000224 0x01001024 GLOBAL FUNC 0    dll.dll export
 EOF
 RUN
@@ -1214,7 +1178,7 @@ EOF
 RUN
 
 NAME=rz-bin -S ""
-FILE=-
+FILE==
 CMDS=!rz-bin -S ""
 EXPECT_ERR=<<EOF
 Cannot open empty path
@@ -1223,7 +1187,7 @@ RUN
 
 NAME=rz-bin rust static type
 BROKEN=1
-FILE=-
+FILE==
 CMDS=!rz-bin -D rust '_ZN71_$LT$Test$u20$$u2b$$u20$$u27$static$u20$as$u20$foo..Bar$LT$Test$GT$$GT$3barE'
 EXPECT=<<EOF
 <Test + 'static as foo::Bar<Test>>::bar
@@ -1232,7 +1196,7 @@ RUN
 
 NAME=rz-bin rust static type with hash
 BROKEN=1
-FILE=-
+FILE==
 CMDS=!rz-bin -D rust '_ZN96_$LT$core..fmt..Write..write_fmt..Adapter$LT$$u27$a$C$$u20$T$GT$$u20$as$u20$core..fmt..Write$GT$9write_str17he4f4768a2f446facE'
 EXPECT=<<EOF
 <core::fmt::Write::write_fmt::Adapter<'a, T> as core::fmt::Write>::write_str::he4f4768a2f446fac

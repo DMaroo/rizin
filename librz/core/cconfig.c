@@ -117,104 +117,6 @@ fail:
 	return false;
 }
 
-static const char *has_esil(RzCore *core, const char *name) {
-	RzListIter *iter;
-	RzAnalysisPlugin *h;
-	rz_return_val_if_fail(core && core->analysis && name, NULL);
-	rz_list_foreach (core->analysis->plugins, iter, h) {
-		if (h->name && !strcmp(name, h->name)) {
-			return h->esil ? "Ae" : "A_";
-		}
-	}
-	return "__";
-}
-
-// copypasta from binrz/rz_asm/rz_asm.c
-static void rz_asm_list(RzCore *core, const char *arch, int fmt) {
-	int i;
-	const char *feat2, *feat;
-	RzAsm *a = core->rasm;
-	char bits[32];
-	RzAsmPlugin *h;
-	RzListIter *iter;
-	PJ *pj = NULL;
-	if (fmt == 'j') {
-		pj = pj_new();
-		if (!pj) {
-			return;
-		}
-		pj_o(pj);
-	}
-	rz_list_foreach (a->plugins, iter, h) {
-		if (arch && *arch) {
-			if (h->cpus && !strcmp(arch, h->name)) {
-				char *c = strdup(h->cpus);
-				int n = rz_str_split(c, ',');
-				for (i = 0; i < n; i++) {
-					rz_cons_println(rz_str_word_get0(c, i));
-				}
-				free(c);
-				break;
-			}
-		} else {
-			bits[0] = 0;
-			/* The underscore makes it easier to distinguish the
-			 * columns */
-			if (h->bits & 8) {
-				strcat(bits, "_8");
-			}
-			if (h->bits & 16) {
-				strcat(bits, "_16");
-			}
-			if (h->bits & 32) {
-				strcat(bits, "_32");
-			}
-			if (h->bits & 64) {
-				strcat(bits, "_64");
-			}
-			if (!*bits) {
-				strcat(bits, "_0");
-			}
-			feat = "__";
-			if (h->assemble && h->disassemble) {
-				feat = "ad";
-			}
-			if (h->assemble && !h->disassemble) {
-				feat = "a_";
-			}
-			if (!h->assemble && h->disassemble) {
-				feat = "_d";
-			}
-			feat2 = has_esil(core, h->name);
-			if (fmt == 'q') {
-				rz_cons_println(h->name);
-			} else if (fmt == 'j') {
-				const char *license = "GPL";
-				pj_k(pj, h->name);
-				pj_o(pj);
-				pj_k(pj, "bits");
-				pj_a(pj);
-				pj_i(pj, 32);
-				pj_i(pj, 64);
-				pj_end(pj);
-				pj_ks(pj, "license", license);
-				pj_ks(pj, "description", h->desc);
-				pj_ks(pj, "features", feat);
-				pj_end(pj);
-			} else {
-				rz_cons_printf("%s%s  %-9s  %-11s %-7s %s\n",
-					feat, feat2, bits, h->name,
-					h->license ? h->license : "unknown", h->desc);
-			}
-		}
-	}
-	if (fmt == 'j') {
-		pj_end(pj);
-		rz_cons_println(pj_string(pj));
-		pj_free(pj);
-	}
-}
-
 static inline void __setsegoff(RzConfig *cfg, const char *asmarch, int asmbits) {
 	int autoseg = (!strncmp(asmarch, "x86", 3) && asmbits == 16);
 	rz_config_set(cfg, "asm.segoff", rz_str_bool(autoseg));
@@ -523,11 +425,19 @@ static bool cb_asmcpu(void *user, void *data) {
 	if (*node->value == '?') {
 		update_asmcpu_options(core, node);
 		/* print verbose help instead of plain option listing */
-		rz_asm_list(core, rz_config_get(core->config, "asm.arch"), node->value[1]);
+		RzCmdStateOutput state = { 0 };
+		state.mode = RZ_OUTPUT_MODE_STANDARD;
+		rz_core_asm_plugins_print(core, rz_config_get(core->config, "asm.arch"), &state);
 		return 0;
 	}
 	rz_asm_set_cpu(core->rasm, node->value);
 	rz_config_set(core->config, "analysis.cpu", node->value);
+
+	const char *dir_prefix = rz_config_get(core->config, "dir.prefix");
+	rz_arch_profiles_init(core->analysis->arch_target, node->value, rz_config_get(core->config, "asm.arch"), dir_prefix);
+	const char *platform = rz_config_get(core->config, "asm.platform");
+	rz_arch_platform_init(core->analysis->platform_target, rz_config_get(core->config, "asm.arch"), node->value, platform, dir_prefix);
+
 	return true;
 }
 
@@ -581,7 +491,9 @@ static bool cb_asmarch(void *user, void *data) {
 		update_asmarch_options(core, node);
 		if (strlen(node->value) > 1 && node->value[1] == '?') {
 			/* print more verbose help instead of plain option values */
-			rz_asm_list(core, NULL, node->value[1]);
+			RzCmdStateOutput state = { 0 };
+			state.mode = RZ_OUTPUT_MODE_STANDARD;
+			rz_core_asm_plugins_print(core, NULL, &state);
 			return false;
 		} else {
 			print_node_options(node);
@@ -652,11 +564,15 @@ static bool cb_asmarch(void *user, void *data) {
 	// set pcalign
 	if (core->analysis) {
 		const char *asmcpu = rz_config_get(core->config, "asm.cpu");
+		const char *dir_prefix = rz_config_get(core->config, "dir.prefix");
+		const char *platform = rz_config_get(core->config, "asm.platform");
 		if (!rz_syscall_setup(core->analysis->syscall, node->value, core->analysis->bits, asmcpu, asmos)) {
 			//eprintf ("asm.arch: Cannot setup syscall '%s/%s' from '%s'\n",
 			//	node->value, asmos, RZ_LIBDIR"/rizin/"RZ_VERSION"/syscall");
 		}
 		update_syscall_ns(core);
+		rz_arch_platform_init(core->analysis->platform_target, node->value, asmcpu, platform, dir_prefix);
+		rz_arch_profiles_init(core->analysis->arch_target, asmcpu, node->value, dir_prefix);
 	}
 	//if (!strcmp (node->value, "bf"))
 	//	rz_config_set (core->config, "dbg.backend", "bf");
@@ -698,6 +614,14 @@ static bool cb_asmarch(void *user, void *data) {
 	// set endian of RzAnalysis to match binary
 	rz_analysis_set_big_endian(core->analysis, bigbin);
 	rz_core_analysis_cc_init(core);
+
+	const char *dir_prefix = rz_config_get(core->config, "dir.prefix");
+	const char *platform = rz_config_get(core->config, "asm.platform");
+	rz_sysreg_set_arch(core->analysis->syscall, node->value, dir_prefix);
+	if (asmcpu) {
+		rz_arch_platform_init(core->analysis->platform_target, node->value, asmcpu->value, platform, dir_prefix);
+		rz_arch_profiles_init(core->analysis->arch_target, asmcpu->value, node->value, dir_prefix);
+	}
 
 	return true;
 }
@@ -763,7 +687,7 @@ static bool cb_asmbits(void *user, void *data) {
 		rz_debug_set_arch(core->dbg, core->analysis->cur->arch, bits);
 		bool load_from_debug = rz_config_get_b(core->config, "cfg.debug");
 		if (load_from_debug) {
-			if (core->dbg->h && core->dbg->h->reg_profile) {
+			if (core->dbg->cur && core->dbg->cur->reg_profile) {
 // XXX. that should depend on the plugin, not the host os
 #if __WINDOWS__
 #if !defined(_WIN64)
@@ -772,7 +696,7 @@ static bool cb_asmbits(void *user, void *data) {
 				core->dbg->bits = RZ_SYS_BITS_64;
 #endif
 #endif
-				char *rp = core->dbg->h->reg_profile(core->dbg);
+				char *rp = core->dbg->cur->reg_profile(core->dbg);
 				rz_reg_set_profile_string(core->dbg->reg, rp);
 				rz_reg_set_profile_string(core->analysis->reg, rp);
 				free(rp);
@@ -809,6 +733,7 @@ static void update_asmfeatures_options(RzCore *core, RzConfigNode *node) {
 	if (core && core->rasm && core->rasm->cur) {
 		if (core->rasm->cur->features) {
 			char *features = strdup(core->rasm->cur->features);
+			rz_list_purge(node->options);
 			argc = rz_str_split(features, ',');
 			for (i = 0; i < argc; i++) {
 				node->options->free = free;
@@ -844,6 +769,48 @@ static bool cb_asmfeatures(void *user, void *data) {
 	return 1;
 }
 
+static void update_asmplatforms_options(RzCore *core, RzConfigNode *node) {
+	int i, argc;
+
+	if (core && core->rasm && core->rasm->cur) {
+		if (core->rasm->cur->platforms) {
+			char *platforms = strdup(core->rasm->cur->platforms);
+			rz_list_purge(node->options);
+			argc = rz_str_split(platforms, ',');
+			for (i = 0; i < argc; i++) {
+				node->options->free = free;
+				const char *feature = rz_str_word_get0(platforms, i);
+				if (feature) {
+					rz_list_append(node->options, strdup(feature));
+				}
+			}
+			free(platforms);
+		}
+	}
+}
+
+static bool cb_asmplatform(void *user, void *data) {
+	RzCore *core = (RzCore *)user;
+	RzConfigNode *node = (RzConfigNode *)data;
+	if (!core) {
+		return false;
+	}
+	if (*node->value == '?') {
+		update_asmplatforms_options(core, node);
+		print_node_options(node);
+		return 0;
+	}
+	RZ_FREE(core->rasm->platforms);
+	if (node->value[0]) {
+		core->rasm->platforms = strdup(node->value);
+	}
+	const char *dir_prefix = rz_config_get(core->config, "dir.prefix");
+	const char *asmcpu = rz_config_get(core->config, "asm.cpu");
+	const char *asmarch = rz_config_get(core->config, "asm.arch");
+	rz_arch_platform_init(core->analysis->platform_target, asmarch, asmcpu, node->value, dir_prefix);
+	return 1;
+}
+
 static bool cb_asmlineswidth(void *user, void *data) {
 	RzCore *core = (RzCore *)user;
 	RzConfigNode *node = (RzConfigNode *)data;
@@ -868,40 +835,6 @@ static bool cb_emuskip(void *user, void *data) {
 				       "'d': data\n'c': code\n's': string\n'f': format\n'm': magic\n"
 				       "'h': hide\n'C': comment\n'r': run\n"
 				       "(default is 'ds' to skip data and strings)\n");
-		} else {
-			print_node_options(node);
-		}
-		return false;
-	}
-	return true;
-}
-
-static bool cb_jsonencoding(void *user, void *data) {
-	RzConfigNode *node = (RzConfigNode *)data;
-	if (*node->value == '?') {
-		if (node->value[1] && node->value[1] == '?') {
-			rz_cons_printf("choose either: \n"
-				       "none (default)\n"
-				       "base64 - encode the json string values as base64\n"
-				       "hex - convert the string to a string of hexpairs\n"
-				       "array - convert the string to an array of chars\n"
-				       "strip - strip non-printable characters\n");
-		} else {
-			print_node_options(node);
-		}
-		return false;
-	}
-	return true;
-}
-
-static bool cb_jsonencoding_numbers(void *user, void *data) {
-	RzConfigNode *node = (RzConfigNode *)data;
-	if (*node->value == '?') {
-		if (node->value[1] && node->value[1] == '?') {
-			rz_cons_printf("choose either: \n"
-				       "none (default)\n"
-				       "string - encode the json number values as strings\n"
-				       "hex - encode the number values as hex, then as a string\n");
 		} else {
 			print_node_options(node);
 		}
@@ -1536,8 +1469,10 @@ static bool cb_dbgstatus(void *user, void *data) {
 static bool cb_dbgbackend(void *user, void *data) {
 	RzCore *core = (RzCore *)user;
 	RzConfigNode *node = (RzConfigNode *)data;
+	RzCmdStateOutput state = { 0 };
+	state.mode = RZ_OUTPUT_MODE_QUIET;
 	if (!strcmp(node->value, "?")) {
-		rz_debug_plugin_list(core->dbg, 'q');
+		rz_core_debug_plugins_print(core, &state);
 		return false;
 	}
 	if (!strcmp(node->value, "bf")) {
@@ -1736,14 +1671,14 @@ static bool cb_iopcache(void *user, void *data) {
 	RzConfigNode *node = (RzConfigNode *)data;
 	if ((bool)node->i_value) {
 		if (core) {
-			rz_config_set_i(core->config, "io.pcache.read", true);
-			rz_config_set_i(core->config, "io.pcache.write", true);
+			rz_config_set_b(core->config, "io.pcache.read", true);
+			rz_config_set_b(core->config, "io.pcache.write", true);
 		}
 	} else {
 		if (core && core->io) {
 			rz_io_desc_cache_fini_all(core->io);
-			rz_config_set_i(core->config, "io.pcache.read", false);
-			rz_config_set_i(core->config, "io.pcache.write", false);
+			rz_config_set_b(core->config, "io.pcache.read", false);
+			rz_config_set_b(core->config, "io.pcache.write", false);
 		}
 	}
 	return true;
@@ -1761,7 +1696,7 @@ static bool cb_iopcacheread(void *user, void *data) {
 			core->io->p_cache &= 2;
 			if (!(core->io->p_cache & 2)) {
 				rz_io_desc_cache_fini_all(core->io);
-				rz_config_set_i(core->config, "io.pcache", false);
+				rz_config_set_b(core->config, "io.pcache", false);
 			}
 		}
 	}
@@ -1780,7 +1715,7 @@ static bool cb_iopcachewrite(void *user, void *data) {
 			core->io->p_cache &= 1;
 			if (!(core->io->p_cache & 1)) {
 				rz_io_desc_cache_fini_all(core->io);
-				rz_config_set_i(core->config, "io.pcache", false);
+				rz_config_set_b(core->config, "io.pcache", false);
 			}
 		}
 	}
@@ -2112,17 +2047,17 @@ static bool cb_scrhtml(void *user, void *data) {
 	return true;
 }
 
-static bool cb_newshell(void *user, void *data) {
+static bool cb_oldshell(void *user, void *data) {
 	RzConfigNode *node = (RzConfigNode *)data;
 	RzCore *core = (RzCore *)user;
-	core->use_tree_sitter_rzcmd = node->i_value;
+	core->use_tree_sitter_rzcmd = !node->i_value;
 	return true;
 }
 
-static bool cb_newshell_autocompletion(void *user, void *data) {
+static bool cb_oldshell_autocompletion(void *user, void *data) {
 	RzConfigNode *node = (RzConfigNode *)data;
 	RzCore *core = (RzCore *)user;
-	core->use_newshell_autocompletion = node->i_value;
+	core->use_rzshell_autocompletion = !node->i_value;
 	return true;
 }
 
@@ -2975,7 +2910,7 @@ RZ_API int rz_core_config_init(RzCore *core) {
 	SETI("dbg.glibc.ma_offset", 0x1bb000, "Main_arena offset from his symbol");
 	SETI("dbg.glibc.fc_offset", 0x148, "First chunk offset from brk_start");
 #endif
-	SETBPREF("dbg.glibc.demangle", "false", "Demangle linked-lists pointers introduced in glibc 2.32");
+	SETI("dbg.glibc.fastbinmax", 10, "Upper bound on the number of fastbins printed");
 
 	SETBPREF("esil.prestep", "true", "Step before esil evaluation in `de` commands");
 	SETPREF("esil.fillstack", "", "Initialize ESIL stack with (random, debrujn, sequence, zeros, ...)");
@@ -3131,6 +3066,9 @@ RZ_API int rz_core_config_init(RzCore *core) {
 	n = NODECB("asm.features", "", &cb_asmfeatures);
 	SETDESC(n, "Specify supported features by the target CPU");
 	update_asmfeatures_options(core, n);
+	n = NODECB("asm.platform", "", &cb_asmplatform);
+	SETDESC(n, "Specify supported platforms by the target architecture");
+	update_asmplatforms_options(core, n);
 	n = NODECB("asm.parser", "x86.pseudo", &cb_asmparser);
 	SETDESC(n, "Set the asm parser to use");
 	update_asmparser_options(core, n);
@@ -3220,9 +3158,9 @@ RZ_API int rz_core_config_init(RzCore *core) {
 	SETCB("cfg.seek.silent", "false", NULL, "When true, seek movements are not logged in seek history");
 	SETCB("cfg.bigendian", "false", &cb_bigendian, "Use little (false) or big (true) endianness");
 	p = rz_sys_getenv("RZ_CFG_OLDSHELL");
-	SETCB("cfg.newshell", p ? "false" : "true", &cb_newshell, "Use new commands parser");
+	SETCB("cfg.oldshell", p ? "true" : "false", &cb_oldshell, "Use old radare2 parser");
 	free(p);
-	SETCB("cfg.newshell.autocompletion", "false", &cb_newshell_autocompletion, "Use autocompletion based on newshell data");
+	SETCB("cfg.oldshell.autocompletion", "true", &cb_oldshell_autocompletion, "Use old radare2 autocompletion");
 	SETI("cfg.cpuaffinity", 0, "Run on cpuid");
 
 	/* log */
@@ -3509,15 +3447,6 @@ RZ_API int rz_core_config_init(RzCore *core) {
 	SETBPREF("esil.stats", "false", "Statistics from ESIL emulation stored in sdb");
 	SETBPREF("esil.nonull", "false", "Prevent memory read, memory write at null pointer");
 	SETCB("esil.mdev.range", "", &cb_mdevrange, "Specify a range of memory to be handled by cmd.esil.mdev");
-
-	/* json encodings */
-	n = NODECB("cfg.json.str", "none", &cb_jsonencoding);
-	SETDESC(n, "Encode strings from json outputs using the specified option");
-	SETOPTIONS(n, "none", "base64", "strip", "hex", "array", NULL);
-
-	n = NODECB("cfg.json.num", "none", &cb_jsonencoding_numbers);
-	SETDESC(n, "Encode numbers from json outputs using the specified option");
-	SETOPTIONS(n, "none", "string", "hex", NULL);
 
 	/* scr */
 #if __EMSCRIPTEN__

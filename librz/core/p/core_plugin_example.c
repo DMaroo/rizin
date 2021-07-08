@@ -1,3 +1,4 @@
+// SPDX-FileCopyrightText: 2021 RizinOrg <info@rizin.re>
 // SPDX-License-Identifier: LGPL-3.0-only
 #if 0
 gcc -o core_plugin_example.so -O3 -std=c99 -Wall -fPIC `pkg-config --cflags --libs rz_core` core_plugin_example.c -shared
@@ -23,7 +24,7 @@ static int rz_cmd_example_init(void *user /* RzCmd* */, const char *unused /* un
 	(void)cmd;
 	/* Here you can initialize any aspect of the
 	 * core plugin (like allocate memory or register
-	 * the core plugin on newshell or create a socket) */
+	 * the core plugin on rzshell or create a socket) */
 	eprintf("This init was called!\n");
 	return true;
 }

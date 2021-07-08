@@ -104,10 +104,11 @@ RZ_API RzList *rz_bin_dump_strings(RzBinFile *bf, int min, int raw) {
 	return rz_bin_file_get_strings(bf, min, 1, raw);
 }
 
-RZ_API void rz_bin_options_init(RzBinOptions *opt, int fd, ut64 baseaddr, ut64 loadaddr, int rawstr) {
+RZ_API void rz_bin_options_init(RzBinOptions *opt, int fd, ut64 baseaddr, ut64 loadaddr, bool patch_relocs, int rawstr) {
 	memset(opt, 0, sizeof(*opt));
-	opt->baseaddr = baseaddr;
-	opt->loadaddr = loadaddr;
+	opt->obj_opts.baseaddr = baseaddr;
+	opt->obj_opts.loadaddr = loadaddr;
+	opt->obj_opts.patch_relocs = patch_relocs;
 	opt->fd = fd;
 	opt->rawstr = rawstr;
 }
@@ -201,6 +202,10 @@ RZ_API void rz_bin_symbol_free(RzBinSymbol *sym) {
 	}
 }
 
+RZ_API void rz_bin_reloc_free(RzBinReloc *reloc) {
+	free(reloc);
+}
+
 RZ_API void rz_bin_string_free(void *_str) {
 	RzBinString *str = (RzBinString *)_str;
 	if (str) {
@@ -209,13 +214,8 @@ RZ_API void rz_bin_string_free(void *_str) {
 	}
 }
 
-// XXX - change this to RzBinObject instead of RzBinFile
-// makes no sense to pass in a binfile and set the RzBinObject
-// kinda a clunky functions
-// XXX - this is a rather hacky way to do things, there may need to be a better
-// way.
-RZ_API bool rz_bin_open(RzBin *bin, const char *file, RzBinOptions *opt) {
-	rz_return_val_if_fail(bin && bin->iob.io && opt, false);
+RZ_API RzBinFile *rz_bin_open(RzBin *bin, const char *file, RzBinOptions *opt) {
+	rz_return_val_if_fail(bin && bin->iob.io && opt, NULL);
 
 	RzIOBind *iob = &(bin->iob);
 	if (!iob->desc_get(iob->io, opt->fd)) {
@@ -223,42 +223,35 @@ RZ_API bool rz_bin_open(RzBin *bin, const char *file, RzBinOptions *opt) {
 	}
 	if (opt->fd < 0) {
 		eprintf("Couldn't open bin for file '%s'\n", file);
-		return false;
+		return NULL;
 	}
 	opt->sz = 0;
 	opt->pluginname = NULL;
 	return rz_bin_open_io(bin, opt);
 }
 
-RZ_API bool rz_bin_reload(RzBin *bin, ut32 bf_id, ut64 baseaddr) {
-	rz_return_val_if_fail(bin, false);
-
-	RzBinFile *bf = rz_bin_file_find_by_id(bin, bf_id);
-	if (!bf) {
-		eprintf("rz_bin_reload: No file to reopen\n");
-		return false;
-	}
+RZ_API RzBinFile *rz_bin_reload(RzBin *bin, RzBinFile *bf, ut64 baseaddr) {
+	rz_return_val_if_fail(bin && bf, NULL);
+	bool patch_relocs = bf->o ? bf->o->opts.patch_relocs : false;
 	RzBinOptions opt;
-	rz_bin_options_init(&opt, bf->fd, baseaddr, bf->loadaddr, bin->rawstr);
+	rz_bin_options_init(&opt, bf->fd, baseaddr, bf->loadaddr, patch_relocs, bin->rawstr);
 	opt.filename = bf->file;
-
 	rz_buf_seek(bf->buf, 0, RZ_BUF_SET);
-
-	bool res = rz_bin_open_buf(bin, bf->buf, &opt);
-	rz_bin_file_delete(bin, bf->id);
-	return res;
+	RzBinFile *nbf = rz_bin_open_buf(bin, bf->buf, &opt);
+	rz_bin_file_delete(bin, bf);
+	return nbf;
 }
 
-RZ_API bool rz_bin_open_buf(RzBin *bin, RzBuffer *buf, RzBinOptions *opt) {
-	rz_return_val_if_fail(bin && opt, false);
+RZ_API RzBinFile *rz_bin_open_buf(RzBin *bin, RzBuffer *buf, RzBinOptions *opt) {
+	rz_return_val_if_fail(bin && opt, NULL);
 
 	RzListIter *it;
 	RzBinXtrPlugin *xtr;
 
 	bin->rawstr = opt->rawstr;
 	bin->file = opt->filename;
-	if (opt->loadaddr == UT64_MAX) {
-		opt->loadaddr = 0;
+	if (opt->obj_opts.loadaddr == UT64_MAX) {
+		opt->obj_opts.loadaddr = 0;
 	}
 
 	RzBinFile *bf = NULL;
@@ -275,7 +268,7 @@ RZ_API bool rz_bin_open_buf(RzBin *bin, RzBuffer *buf, RzBinOptions *opt) {
 				if (xtr->extract_from_buffer || xtr->extractall_from_buffer ||
 					xtr->extract_from_bytes || xtr->extractall_from_bytes) {
 					bf = rz_bin_file_xtr_load_buffer(bin, xtr,
-						bin->file, buf, opt->baseaddr, opt->loadaddr,
+						bin->file, buf, &opt->obj_opts,
 						opt->xtr_idx, opt->fd, bin->rawstr);
 				}
 			}
@@ -285,29 +278,27 @@ RZ_API bool rz_bin_open_buf(RzBin *bin, RzBuffer *buf, RzBinOptions *opt) {
 		// Uncomment for this speedup: 20s vs 22s
 		// RzBuffer *buf = rz_buf_new_slurp (bin->file);
 		bf = rz_bin_file_new_from_buffer(bin, bin->file, buf, bin->rawstr,
-			opt->baseaddr, opt->loadaddr, opt->fd, opt->pluginname);
+			&opt->obj_opts, opt->fd, opt->pluginname);
 		if (!bf) {
-			return false;
+			return NULL;
 		}
 	}
-	if (!rz_bin_file_set_cur_binfile(bin, bf)) {
-		return false;
-	}
+	rz_bin_file_set_cur_binfile(bin, bf);
 	rz_id_storage_set(bin->ids, bin->cur, bf->id);
-	return true;
+	return bf;
 }
 
-RZ_API bool rz_bin_open_io(RzBin *bin, RzBinOptions *opt) {
-	rz_return_val_if_fail(bin && opt && bin->iob.io, false);
-	rz_return_val_if_fail(opt->fd >= 0 && (st64)opt->sz >= 0, false);
+RZ_API RzBinFile *rz_bin_open_io(RzBin *bin, RzBinOptions *opt) {
+	rz_return_val_if_fail(bin && opt && bin->iob.io, NULL);
+	rz_return_val_if_fail(opt->fd >= 0 && (st64)opt->sz >= 0, NULL);
 
 	RzIOBind *iob = &(bin->iob);
 	RzIO *io = iob ? iob->io : NULL;
 
 	bool is_debugger = iob->fd_is_dbg(io, opt->fd);
 	const char *fname = iob->fd_get_name(io, opt->fd);
-	if (opt->loadaddr == UT64_MAX) {
-		opt->loadaddr = 0;
+	if (opt->obj_opts.loadaddr == UT64_MAX) {
+		opt->obj_opts.loadaddr = 0;
 	}
 
 	// Create RzBuffer from the opened file
@@ -324,7 +315,7 @@ RZ_API bool rz_bin_open_io(RzBin *bin, RzBinOptions *opt) {
 		buf = rz_buf_new_with_io(&bin->iob, opt->fd);
 	}
 	if (!buf) {
-		return false;
+		return NULL;
 	}
 
 	if (!opt->sz) {
@@ -333,10 +324,10 @@ RZ_API bool rz_bin_open_io(RzBin *bin, RzBinOptions *opt) {
 
 	// Slice buffer if necessary
 	RzBuffer *slice = buf;
-	if (!is_debugger && (opt->loadaddr != 0 || opt->sz != rz_buf_size(buf))) {
-		slice = rz_buf_new_slice(buf, opt->loadaddr, opt->sz);
-	} else if (is_debugger && opt->baseaddr != UT64_MAX && opt->baseaddr != 0) {
-		slice = rz_buf_new_slice(buf, opt->baseaddr, opt->sz);
+	if (!is_debugger && (opt->obj_opts.loadaddr != 0 || opt->sz != rz_buf_size(buf))) {
+		slice = rz_buf_new_slice(buf, opt->obj_opts.loadaddr, opt->sz);
+	} else if (is_debugger && opt->obj_opts.baseaddr != UT64_MAX && opt->obj_opts.baseaddr != 0) {
+		slice = rz_buf_new_slice(buf, opt->obj_opts.baseaddr, opt->sz);
 	}
 	if (slice != buf) {
 		rz_buf_free(buf);
@@ -344,9 +335,9 @@ RZ_API bool rz_bin_open_io(RzBin *bin, RzBinOptions *opt) {
 	}
 
 	opt->filename = fname;
-	bool res = rz_bin_open_buf(bin, buf, opt);
+	RzBinFile *bf = rz_bin_open_buf(bin, buf, opt);
 	rz_buf_free(buf);
-	return res;
+	return bf;
 }
 
 RZ_IPI RzBinPlugin *rz_bin_get_binplugin_by_name(RzBin *bin, const char *name) {
@@ -403,8 +394,7 @@ static void rz_bin_plugin_free(RzBinPlugin *p) {
 	RZ_FREE(p);
 }
 
-// rename to rz_bin_plugin_add like the rest
-RZ_API bool rz_bin_add(RzBin *bin, RzBinPlugin *foo) {
+RZ_API bool rz_bin_plugin_add(RzBin *bin, RzBinPlugin *foo) {
 	RzListIter *it;
 	RzBinPlugin *plugin;
 
@@ -463,21 +453,23 @@ RZ_API bool rz_bin_xtr_add(RzBin *bin, RzBinXtrPlugin *foo) {
 }
 
 RZ_API void rz_bin_free(RzBin *bin) {
-	if (bin) {
-		bin->file = NULL;
-		free(bin->force);
-		free(bin->srcdir);
-		free(bin->strenc);
-		//rz_bin_free_bin_files (bin);
-		rz_list_free(bin->binfiles);
-		rz_list_free(bin->binxtrs);
-		rz_list_free(bin->plugins);
-		rz_list_free(bin->binldrs);
-		sdb_free(bin->sdb);
-		rz_id_storage_free(bin->ids);
-		rz_str_constpool_fini(&bin->constpool);
-		free(bin);
+	if (!bin) {
+		return;
 	}
+	bin->file = NULL;
+	free(bin->force);
+	free(bin->srcdir);
+	free(bin->strenc);
+	//rz_bin_free_bin_files (bin);
+	rz_list_free(bin->binfiles);
+	rz_list_free(bin->binxtrs);
+	rz_list_free(bin->plugins);
+	rz_list_free(bin->binldrs);
+	sdb_free(bin->sdb);
+	rz_id_storage_free(bin->ids);
+	rz_event_free(bin->event);
+	rz_str_constpool_fini(&bin->constpool);
+	free(bin);
 }
 
 static bool rz_bin_print_plugin_details(RzBin *bin, RzBinPlugin *bp, PJ *pj, int json) {
@@ -537,13 +529,13 @@ RZ_API bool rz_bin_list_plugin(RzBin *bin, const char *name, PJ *pj, int json) {
 	rz_return_val_if_fail(bin && name, false);
 
 	rz_list_foreach (bin->plugins, it, bp) {
-		if (!rz_str_cmp(name, bp->name, strlen(name))) {
+		if (rz_str_cmp(name, bp->name, strlen(name))) {
 			continue;
 		}
 		return rz_bin_print_plugin_details(bin, bp, pj, json);
 	}
 	rz_list_foreach (bin->binxtrs, it, bx) {
-		if (!rz_str_cmp(name, bx->name, strlen(name))) {
+		if (rz_str_cmp(name, bx->name, strlen(name))) {
 			continue;
 		}
 		__printXtrPluginDetails(bin, bx, json);
@@ -552,69 +544,6 @@ RZ_API bool rz_bin_list_plugin(RzBin *bin, const char *name, PJ *pj, int json) {
 
 	eprintf("Cannot find plugin %s\n", name);
 	return false;
-}
-
-RZ_API void rz_bin_list(RzBin *bin, PJ *pj, int format) {
-	RzListIter *it;
-	RzBinPlugin *bp;
-	RzBinXtrPlugin *bx;
-	RzBinLdrPlugin *ld;
-
-	if (format == 'q') {
-		rz_list_foreach (bin->plugins, it, bp) {
-			bin->cb_printf("%s\n", bp->name);
-		}
-		rz_list_foreach (bin->binxtrs, it, bx) {
-			bin->cb_printf("%s\n", bx->name);
-		}
-	} else if (format) {
-		pj_o(pj);
-		pj_ka(pj, "bin");
-		rz_list_foreach (bin->plugins, it, bp) {
-			pj_o(pj);
-			pj_ks(pj, "name", bp->name);
-			pj_ks(pj, "description", bp->desc);
-			pj_ks(pj, "license", bp->license ? bp->license : "???");
-			pj_end(pj);
-		}
-		pj_end(pj);
-		pj_ka(pj, "xtr");
-		rz_list_foreach (bin->binxtrs, it, bx) {
-			pj_o(pj);
-			pj_ks(pj, "name", bx->name);
-			pj_ks(pj, "description", bx->desc);
-			pj_ks(pj, "license", bx->license ? bx->license : "???");
-			pj_end(pj);
-		}
-		pj_end(pj);
-		pj_ka(pj, "ldr");
-		rz_list_foreach (bin->binxtrs, it, ld) {
-			pj_o(pj);
-			pj_ks(pj, "name", ld->name);
-			pj_ks(pj, "description", ld->desc);
-			pj_ks(pj, "license", ld->license ? ld->license : "???");
-			pj_end(pj);
-		}
-		pj_end(pj);
-		pj_end(pj);
-	} else {
-		rz_list_foreach (bin->plugins, it, bp) {
-			bin->cb_printf("bin  %-11s %s (%s) %s %s\n",
-				bp->name, bp->desc, bp->license ? bp->license : "???",
-				bp->version ? bp->version : "",
-				bp->author ? bp->author : "");
-		}
-		rz_list_foreach (bin->binxtrs, it, bx) {
-			const char *name = strncmp(bx->name, "xtr.", 4) ? bx->name : bx->name + 3;
-			bin->cb_printf("xtr  %-11s %s (%s)\n", name,
-				bx->desc, bx->license ? bx->license : "???");
-		}
-		rz_list_foreach (bin->binldrs, it, ld) {
-			const char *name = strncmp(ld->name, "ldr.", 4) ? ld->name : ld->name + 3;
-			bin->cb_printf("ldr  %-11s %s (%s)\n", name,
-				ld->desc, ld->license ? ld->license : "???");
-		}
-	}
 }
 
 /* returns the base address of bin or UT64_MAX in case of errors */
@@ -627,7 +556,7 @@ RZ_API ut64 rz_bin_get_baddr(RzBin *bin) {
 RZ_API ut64 rz_bin_get_laddr(RzBin *bin) {
 	rz_return_val_if_fail(bin, UT64_MAX);
 	RzBinObject *o = rz_bin_cur_object(bin);
-	return o ? o->loadaddr : UT64_MAX;
+	return o ? o->opts.loadaddr : UT64_MAX;
 }
 
 // TODO: should be RzBinFile specific imho
@@ -641,11 +570,11 @@ RZ_API void rz_bin_set_baddr(RzBin *bin, ut64 baddr) {
 		}
 		ut64 file_baddr = o->plugin->baddr(bf);
 		if (baddr == UT64_MAX) {
-			o->baddr = file_baddr;
+			o->opts.baseaddr = file_baddr;
 			o->baddr_shift = 0; // o->baddr; // - file_baddr;
 		} else {
 			if (file_baddr != UT64_MAX) {
-				o->baddr = baddr;
+				o->opts.baseaddr = baddr;
 				o->baddr_shift = baddr - file_baddr;
 			}
 		}
@@ -685,30 +614,6 @@ RZ_API RzList *rz_bin_get_libs(RzBin *bin) {
 	rz_return_val_if_fail(bin, NULL);
 	RzBinObject *o = rz_bin_cur_object(bin);
 	return o ? o->libs : NULL;
-}
-
-static RzList *relocs_rbtree2list(RBNode *root) {
-	RzList *res = rz_list_new();
-	RzBinReloc *reloc;
-	RBIter it;
-
-	rz_rbtree_foreach (root, it, reloc, RzBinReloc, vrb) {
-		rz_list_append(res, reloc);
-	}
-	return res;
-}
-
-RZ_API RBNode *rz_bin_get_relocs(RzBin *bin) {
-	rz_return_val_if_fail(bin, NULL);
-	RzBinObject *o = rz_bin_cur_object(bin);
-	return o ? o->relocs : NULL;
-}
-
-// return a list of <const RzBinReloc> that needs to be freed by the caller
-RZ_API RzList *rz_bin_get_relocs_list(RzBin *bin) {
-	rz_return_val_if_fail(bin, NULL);
-	RBNode *root = rz_bin_get_relocs(bin);
-	return root ? relocs_rbtree2list(root) : NULL;
 }
 
 RZ_API RzList *rz_bin_get_sections(RzBin *bin) {
@@ -815,6 +720,8 @@ RZ_API int rz_bin_is_static(RzBin *bin) {
 	return true;
 }
 
+RZ_IPI void rz_bin_file_free(void /*RzBinFile*/ *_bf);
+
 RZ_API RzBin *rz_bin_new(void) {
 	int i;
 	RzBinXtrPlugin *static_xtr_plugin;
@@ -825,6 +732,10 @@ RZ_API RzBin *rz_bin_new(void) {
 	}
 	if (!rz_str_constpool_init(&bin->constpool)) {
 		goto trashbin;
+	}
+	bin->event = rz_event_new(bin);
+	if (!bin->event) {
+		goto trashbin_constpool;
 	}
 	bin->force = NULL;
 	bin->filter_rules = UT64_MAX;
@@ -841,7 +752,7 @@ RZ_API RzBin *rz_bin_new(void) {
 	/* bin parsers */
 	bin->binfiles = rz_list_newf((RzListFree)rz_bin_file_free);
 	for (i = 0; bin_static_plugins[i]; i++) {
-		rz_bin_add(bin, bin_static_plugins[i]);
+		rz_bin_plugin_add(bin, bin_static_plugins[i]);
 	}
 	/* extractors */
 	bin->binxtrs = rz_list_new();
@@ -876,6 +787,8 @@ trashbin_binxtrs:
 	rz_list_free(bin->binxtrs);
 	rz_list_free(bin->binfiles);
 	rz_id_storage_free(bin->ids);
+	rz_event_free(bin->event);
+trashbin_constpool:
 	rz_str_constpool_fini(&bin->constpool);
 trashbin:
 	free(bin);
@@ -895,8 +808,11 @@ RZ_API bool rz_bin_use_arch(RzBin *bin, const char *arch, int bits, const char *
 	if (!obj && binfile->xtr_data) {
 		RzBinXtrData *xtr_data = rz_list_get_n(binfile->xtr_data, 0);
 		if (xtr_data && !xtr_data->loaded) {
-			if (!rz_bin_file_object_new_from_xtr_data(bin, binfile,
-				    UT64_MAX, rz_bin_get_laddr(bin), xtr_data)) {
+			RzBinObjectLoadOptions obj_opts = {
+				.baseaddr = UT64_MAX,
+				.loadaddr = rz_bin_get_laddr(bin)
+			};
+			if (!rz_bin_file_object_new_from_xtr_data(bin, binfile, &obj_opts, xtr_data)) {
 				return false;
 			}
 		}
@@ -1363,6 +1279,102 @@ RZ_API const char *rz_bin_get_meth_flag_string(ut64 flag, bool compact) {
 	}
 }
 
+RZ_API void rz_bin_virtual_file_free(RzBinVirtualFile *vfile) {
+	if (!vfile) {
+		return;
+	}
+	if (vfile->buf_owned) {
+		rz_buf_free(vfile->buf);
+	}
+	free(vfile->name);
+	free(vfile);
+}
+
+RZ_API void rz_bin_map_free(RzBinMap *map) {
+	if (!map) {
+		return;
+	}
+	free(map->vfile_name);
+	free(map->name);
+	free(map);
+}
+
+/**
+ * \brief Create a list of RzBinMap from RzBinSections queried from the given file
+ *
+ * Some binary formats have a 1:1 correspondence of mapping and
+ * their RzBinSections. This is not always the case (e.g. ELF)
+ * but if it is, plugins can use this function as their maps callback,
+ * which will generate mappings for sections.
+ * */
+RZ_API RzList *rz_bin_maps_of_file_sections(RzBinFile *binfile) {
+	rz_return_val_if_fail(binfile, NULL);
+	if (!binfile->o || !binfile->o->plugin || !binfile->o->plugin->sections) {
+		return NULL;
+	}
+	RzList *sections = binfile->o->plugin->sections(binfile);
+	if (!sections) {
+		return NULL;
+	}
+	RzList *r = rz_list_newf((RzListFree)rz_bin_map_free);
+	if (!r) {
+		goto hcf;
+	}
+	RzBinSection *sec;
+	RzListIter *it;
+	rz_list_foreach (sections, it, sec) {
+		RzBinMap *map = RZ_NEW0(RzBinMap);
+		if (!map) {
+			goto hcf;
+		}
+		map->name = sec->name ? strdup(sec->name) : NULL;
+		map->paddr = sec->paddr;
+		map->psize = sec->size;
+		map->vaddr = sec->vaddr;
+		map->vsize = sec->vsize;
+		map->perm = sec->perm;
+		rz_list_push(r, map);
+	}
+hcf:
+	rz_list_free(sections);
+	return r;
+}
+
+/**
+ * \brief Create a list of RzBinSection from RzBinMaps
+ *
+ * Some binary formats have a 1:1 correspondence of mapping and
+ * some of their RzBinSections, but also want to add some unmapped sections.
+ * In this case, they can implement their mapped sections in their maps callback,
+ * then in their sections callback use this function to create sections from them
+ * and add some additional ones.
+ * See also rz_bin_maps_of_file_sections() for the inverse, when no additional
+ * sections should be added.
+ * */
+RZ_API RzList *rz_bin_sections_of_maps(RzList /*<RzBinMap>*/ *maps) {
+	rz_return_val_if_fail(maps, NULL);
+	RzList *ret = rz_list_newf((RzListFree)rz_bin_section_free);
+	if (!ret) {
+		return NULL;
+	}
+	RzListIter *it;
+	RzBinMap *map;
+	rz_list_foreach (maps, it, map) {
+		RzBinSection *sec = RZ_NEW0(RzBinSection);
+		if (!sec) {
+			break;
+		}
+		sec->name = map->name ? strdup(map->name) : NULL;
+		sec->paddr = map->paddr;
+		sec->size = map->psize;
+		sec->vaddr = map->vaddr;
+		sec->vsize = map->vsize;
+		sec->perm = map->perm;
+		rz_list_append(ret, sec);
+	}
+	return ret;
+}
+
 RZ_IPI RzBinSection *rz_bin_section_new(const char *name) {
 	RzBinSection *s = RZ_NEW0(RzBinSection);
 	if (s) {
@@ -1375,9 +1387,44 @@ RZ_IPI void rz_bin_section_free(RzBinSection *bs) {
 	if (bs) {
 		free(bs->name);
 		free(bs->format);
-		free(bs->map_name);
 		free(bs);
 	}
+}
+
+/**
+ * \brief Converts the RzBinSection type to the string representation
+ *
+ * Some binary formats have a function interface called "section_type_to_string"
+ * The returned string type name is different between formats
+ *
+ * \param bin RzBin instance
+ * \param type A type field of the RzBinSection (differs between formats)
+ * */
+RZ_API RZ_OWN char *rz_bin_section_type_to_string(RzBin *bin, int type) {
+	RzBinFile *a = rz_bin_cur(bin);
+	RzBinPlugin *plugin = rz_bin_file_cur_plugin(a);
+	if (plugin && plugin->section_type_to_string) {
+		return plugin->section_type_to_string(type);
+	}
+	return NULL;
+}
+
+/**
+ * \brief Converts the RzBinSection flags to a list of string representations
+ *
+ * Some binary formats have a function interface called "section_flag_to_rzlist"
+ * The returned string flag names are different between formats
+ *
+ * \param bin RzBin instance
+ * \param flag A flag field of the RzBinSection (differs between formats)
+ * */
+RZ_API RZ_OWN RzList *rz_bin_section_flag_to_list(RzBin *bin, ut64 flag) {
+	RzBinFile *a = rz_bin_cur(bin);
+	RzBinPlugin *plugin = rz_bin_file_cur_plugin(a);
+	if (plugin && plugin->section_flag_to_rzlist) {
+		return plugin->section_flag_to_rzlist(flag);
+	}
+	return NULL;
 }
 
 RZ_API RzBinFile *rz_bin_file_at(RzBin *bin, ut64 at) {
@@ -1392,7 +1439,7 @@ RZ_API RzBinFile *rz_bin_file_at(RzBin *bin, ut64 at) {
 				return bf;
 			}
 		}
-		if (at >= bf->o->baddr && at < (bf->o->baddr + bf->size)) {
+		if (at >= bf->o->opts.baseaddr && at < (bf->o->opts.baseaddr + bf->size)) {
 			return bf;
 		}
 	}

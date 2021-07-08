@@ -22,6 +22,7 @@
 #include <rz_flag.h>
 #include <rz_bin.h>
 #include <rz_type.h>
+#include <rz_arch.h>
 
 #define esilprintf(op, fmt, ...) rz_strbuf_setf(&op->esil, fmt, ##__VA_ARGS__)
 
@@ -633,6 +634,8 @@ typedef struct rz_analysis_t {
 	SetU *visited;
 	RzStrConstPool constpool;
 	RzList *leaddrs;
+	RzArchTarget *arch_target;
+	RzArchPlatformTarget *platform_target;
 } RzAnalysis;
 
 typedef enum rz_analysis_addr_hint_type_t {
@@ -1491,6 +1494,8 @@ RZ_API void rz_analysis_pin(RzAnalysis *a, ut64 addr, const char *name);
 RZ_API void rz_analysis_pin_unset(RzAnalysis *a, ut64 addr);
 RZ_API const char *rz_analysis_pin_call(RzAnalysis *a, ut64 addr);
 RZ_API void rz_analysis_pin_list(RzAnalysis *a);
+
+RZ_API bool rz_analysis_add_device_peripheral_map(RzBinObject *o, RzAnalysis *analysis);
 
 /* fcn.c */
 RZ_API ut32 rz_analysis_function_cost(RzAnalysisFunction *fcn);

@@ -6,7 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <rz_hash.h>
+#include <rz_msg_digest.h>
 #include <rz_types.h>
 #include <rz_util.h>
 #include "pe.h"
@@ -1083,20 +1083,19 @@ const char *PE_(bin_pe_compute_authentihash)(struct PE_(rz_bin_pe_obj_t) * bin) 
 
 	char *hashtype = strdup(bin->spcinfo->messageDigest.digestAlgorithm.algorithm->string);
 	rz_str_replace_char(hashtype, '-', 0);
-	ut64 algobit = rz_hash_name_to_bits(hashtype);
-	if (!(algobit & (RZ_HASH_MD5 | RZ_HASH_SHA1 | RZ_HASH_SHA256))) {
-		eprintf("Authenticode only supports md5, sha1, sha256. This PE uses %s\n", hashtype);
+
+	RzMsgDigest *md = rz_msg_digest_new_with_algo2(hashtype);
+	if (!md) {
 		free(hashtype);
 		return NULL;
 	}
-	free(hashtype);
 	ut32 checksum_paddr = bin->nt_header_offset + 4 + sizeof(PE_(image_file_header)) + 0x40;
 	ut32 security_entry_offset = bin->nt_header_offset + sizeof(PE_(image_nt_headers)) - 96;
 	PE_(image_data_directory) *data_dir_security = &bin->data_directory[PE_IMAGE_DIRECTORY_ENTRY_SECURITY];
 	PE_DWord security_dir_offset = data_dir_security->VirtualAddress;
 	ut32 security_dir_size = data_dir_security->Size;
 
-	RzBuffer *buf = rz_buf_new();
+	RzBuffer *buf = rz_buf_new_with_bytes(NULL, 0);
 	rz_buf_append_buf_slice(buf, bin->b, 0, checksum_paddr);
 	rz_buf_append_buf_slice(buf, bin->b,
 		checksum_paddr + 4,
@@ -1108,18 +1107,23 @@ const char *PE_(bin_pe_compute_authentihash)(struct PE_(rz_bin_pe_obj_t) * bin) 
 		security_dir_offset + security_dir_size,
 		rz_buf_size(bin->b) - security_dir_offset - security_dir_size);
 
-	ut64 len;
-	const ut8 *data = rz_buf_data(buf, &len);
-	char *hashstr = NULL;
-	RzHash *ctx = rz_hash_new(true, algobit);
-	if (ctx) {
-		rz_hash_do_begin(ctx, algobit);
-		int digest_size = rz_hash_calculate(ctx, algobit, data, len);
-		rz_hash_do_end(ctx, algobit);
-		hashstr = rz_hex_bin2strdup(ctx->digest, digest_size);
-		rz_buf_free(buf);
-		rz_hash_free(ctx);
+	ut64 datalen;
+	const ut8 *data = rz_buf_data(buf, &datalen);
+	RzMsgDigestSize digest_size = 0;
+	const ut8 *digest = NULL;
+
+	if (datalen < 1 || !rz_msg_digest_update(md, data, datalen) ||
+		!rz_msg_digest_final(md) ||
+		!(digest = rz_msg_digest_get_result(md, hashtype, &digest_size))) {
+
+		free(hashtype);
+		rz_msg_digest_free(md);
+		return NULL;
 	}
+
+	char *hashstr = rz_hex_bin2strdup(digest, digest_size);
+	free(hashtype);
+	rz_msg_digest_free(md);
 	return hashstr;
 }
 
@@ -4526,7 +4530,7 @@ struct PE_(rz_bin_pe_obj_t) * PE_(rz_bin_pe_new)(const char *file, bool verbose)
 	if (!buf) {
 		return PE_(rz_bin_pe_free)(bin);
 	}
-	bin->b = rz_buf_new();
+	bin->b = rz_buf_new_with_bytes(NULL, 0);
 	if (!rz_buf_set_bytes(bin->b, buf, bin->size)) {
 		free(buf);
 		return PE_(rz_bin_pe_free)(bin);

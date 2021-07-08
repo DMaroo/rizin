@@ -324,10 +324,10 @@ static int rz_core_rtr_gdb_cb(libgdbr_t *g, void *core_ptr, const char *cmd,
 			case 't':
 				switch (cmd[3]) {
 				case '\0': // dpt
-					if (!core->dbg->h->threads) {
+					if (!core->dbg->cur->threads) {
 						return -1;
 					}
-					if (!(list = core->dbg->h->threads(core->dbg, core->dbg->pid))) {
+					if (!(list = core->dbg->cur->threads(core->dbg, core->dbg->pid))) {
 						return -1;
 					}
 					memset(out_buf, 0, max_len);
@@ -861,7 +861,7 @@ RZ_API void rz_core_rtr_cmd(RzCore *core, const char *input) {
 		return;
 	}
 
-	if (*input == '&') { // "=h&" "=&:9090"
+	if (*input == '&') { // "Rh&" "R&:9090"
 		if (rapthread) {
 			eprintf("RAP Thread is already running\n");
 			eprintf("This is experimental and probably buggy. Use at your own risk\n");

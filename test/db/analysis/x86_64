@@ -22,7 +22,7 @@ EOF
 RUN
 
 NAME=analysis.ijmp missing branch bug
-FILE=-
+FILE==
 CMDS=<<EOF
 e asm.arch=x86
 e asm.bits=64
@@ -846,14 +846,14 @@ EOF
 EXPECT=<<EOF
 Current section
 
-nth paddr       size vaddr       vsize perm name               type flags
--------------------------------------------------------------------------
+nth paddr       size vaddr       vsize perm name               type flags 
+--------------------------------------------------------------------------
 0   0x00000188  0x24 0x08048188   0x24 -r-- .note.gnu.build-id NOTE alloc
 
 Current section
 
-nth paddr  size vaddr  vsize perm name type flags
--------------------------------------------------
+nth paddr  size vaddr  vsize perm name type flags 
+--------------------------------------------------
 
 {"name":".plt","size":240,"vsize":240,"perm":"-r-x","type":"PROGBITS","flags":["alloc","execute"],"paddr":1888,"vaddr":134514528}
 EOF
@@ -870,8 +870,8 @@ isj.
 EOF
 EXPECT=<<EOF
 
-nth paddr      vaddr      bind   type size lib name
----------------------------------------------------
+nth paddr      vaddr      bind   type size lib name    
+-------------------------------------------------------
 22  0x000009b7 0x080489b7 GLOBAL FUNC 189      decrypt
 {"name":"prog_timeout","flagname":"sym.prog_timeout","realname":"prog_timeout","ordinal":35,"bind":"GLOBAL","size":17,"type":"FUNC","vaddr":134515110,"paddr":2470,"is_imported":false}
 EOF
@@ -1078,7 +1078,7 @@ EXPECT=<<EOF
 |   ,=====< 0x00011414      jne   0x11424
 |   |||||   0x00011416      lea   rbx, [rax + 4]
 |   |||||   0x0001141a      mov   rax, qword [rip + 0xdeaf]            ; reloc.program_invocation_short_name
-|   |||||                                                              ; [0x1f2d0:8]=0
+|   |||||                                                              ; [0x1f2d0:8]=0x221f8 reloc.target.program_invocation_short_name
 |   |||||   0x00011421      mov   qword [rax], rbx
 |   |||||   ; CODE XREFS from fcn.00011390 @ 0x113d0, 0x113e0, 0x113f4, 0x11414
 |   ````--> 0x00011424      mov   rax, qword [rip + 0xde3d]            ; [0x1f268:8]=0x21680
@@ -1415,7 +1415,7 @@ EXPECT=<<EOF
 |           0x14000b568      4533c9         xor   r9d, r9d             ; LPSECURITY_ATTRIBUTES lpSecurityAttributes
 |           0x14000b56b      4489442420     mov   dword [dwCreationDisposition], r8d ; DWORD dwCreationDisposition
 |           0x14000b570      ba00000040     mov   edx, 0x40000000      ; DWORD dwDesiredAccess
-|           0x14000b575      ff158d1c0000   call  qword [sym.imp.KERNEL32.dll_CreateFileW] ; [0x14000d208:8]=0x1579e reloc.KERNEL32.dll_CreateFileW ; HANDLE CreateFileW(LPCWSTR lpFileName, DWORD dwDesiredAccess, DWORD dwShareMode, LPSECURITY_ATTRIBUTES lpSecurityAttributes, DWORD dwCreationDisposition, DWORD dwFlagsAndAttributes, HANDLE hTemplateFile)
+|           0x14000b575      ff158d1c0000   call  qword [sym.imp.KERNEL32.dll_CreateFileW] ; [sym.imp.KERNEL32.dll_CreateFileW:8]=0x1579e reloc.KERNEL32.dll_CreateFileW ; HANDLE CreateFileW(LPCWSTR lpFileName, DWORD dwDesiredAccess, DWORD dwShareMode, LPSECURITY_ATTRIBUTES lpSecurityAttributes, DWORD dwCreationDisposition, DWORD dwFlagsAndAttributes, HANDLE hTemplateFile)
 |           0x14000b57b      4889057eb400.  mov   qword [0x140016a00], rax ; [0x140016a00:8]=-2
 |           0x14000b582      4883c448       add   rsp, 0x48
 \           0x14000b586      c3             ret
@@ -1740,7 +1740,7 @@ EOF
 RUN
 
 NAME=analysis vars crash
-FILE=-
+FILE==
 CMDS=<<EOF
 e asm.bytes=true
 af
@@ -1752,7 +1752,7 @@ EOF
 RUN
 
 NAME=analysis vars crash 2
-FILE=-
+FILE==
 CMDS=<<EOF
 e asm.bytes=true
 e asm.bits=64
@@ -2052,7 +2052,7 @@ EOF
 RUN
 
 NAME=ax-
-FILE=-
+FILE==
 CMDS=<<EOF
 ax 10 20
 axq
@@ -2065,7 +2065,7 @@ EOF
 RUN
 
 NAME=ax-@
-FILE=-
+FILE==
 CMDS=<<EOF
 s 20
 ax 10
@@ -2079,7 +2079,7 @@ EOF
 RUN
 
 NAME=ax-*
-FILE=-
+FILE==
 CMDS=<<EOF
 ax 10
 ax
@@ -2126,7 +2126,7 @@ EOF
 RUN
 
 NAME=x86 ref issue
-FILE=-
+FILE==
 CMDS=<<EOF
 e asm.bits=64
 e asm.arch=x86
@@ -2139,7 +2139,7 @@ EOF
 RUN
 
 NAME=aoj pushf
-FILE=-
+FILE==
 CMDS=<<EOF
 e asm.arch=x86
 e asm.bits=64
@@ -2224,7 +2224,7 @@ EOF
 RUN
 
 NAME=delete references with ax-
-FILE=-
+FILE==
 CMDS=<<EOF
 ax 10 20
 axq
@@ -2327,7 +2327,7 @@ EOF
 RUN
 
 NAME=axs
-FILE=-
+FILE==
 CMDS=<<EOF
 axs 0x10
 axq
@@ -2467,13 +2467,12 @@ EOF
 RUN
 
 NAME=r_analysis_fcn_split_bb FITFCNSZ fix (#12008)
-FILE=-
+FILE==
 CMDS=<<EOF
 e asm.arch=x86
 e asm.bytes=true
 e asm.bits=64
 e analysis.jmp.mid=false
-e io.cache=true
 wx b8210000c1ebfdbb2c000000000
 af
 afi
@@ -2528,7 +2527,7 @@ EOF
 RUN
 
 NAME=overlapping basic blocks and analysis.jmp.mid
-FILE=-
+FILE==
 CMDS=<<EOF
 e asm.arch=x86
 e asm.bytes=true
@@ -2536,7 +2535,6 @@ e asm.bits=64
 e analysis.nopskip=false
 e asm.bb.middle=true
 e analysis.jmp.mid=true
-e io.cache=true
 "(show_fcn bin; wx $0; af-*; af; afi; ?e; afb; ?e; pdr; ?e; agf; ?e; e asm.bb.middle=true; pdf; ?e; e asm.bb.middle=false; pdf)"
 .(show_fcn b8210000c1ebfdbb2c000000cc)
 ?e
@@ -2899,12 +2897,11 @@ EOF
 RUN
 
 NAME=basic block overlaps function start
-FILE=-
+FILE==
 CMDS=<<EOF
 e asm.arch=x86
 e asm.bytes=true
 e asm.bits=64
-e io.cache=true
 wx b821c10010ebf9
 s 3
 af; afi; ?e; afb; ?e; pdr; ?e; agf; ?e; pdf
@@ -2996,12 +2993,11 @@ EOF
 RUN
 
 NAME=af-* removes function flags
-FILE=-
+FILE==
 CMDS=<<EOF
 e asm.arch=x86
 e asm.bytes=true
 e asm.bits=64
-e io.cache=true
 wx b821c10010ebf9
 s 0
 af; af-*
@@ -3053,12 +3049,11 @@ EOF
 RUN
 
 NAME=so -N and overlapping basic blocks
-FILE=-
+FILE==
 CMDS=<<EOF
 e asm.arch=x86
 e asm.bits=64
 e analysis.jmp.mid=true
-e io.cache=true
 e analysis.nopskip=false
 wx 0f1f440000b8210000c1ebfdbb2c000000ebf0
 af
@@ -3076,7 +3071,7 @@ EOF
 RUN
 
 NAME=a8 analyze bytes
-FILE=-
+FILE==
 CMDS=<<EOF
 e asm.arch=x86
 e asm.bits=64
@@ -3150,7 +3145,6 @@ e emu.write=true
 e asm.bytes=0
 e asm.cmt.col=20
 e asm.lines.bb=false
-e io.cache=true
 aeim
 s 0x00402aee
 pd 10~?int LoadStringA
@@ -3184,7 +3178,7 @@ EOF
 RUN
 
 NAME=sar on x86-64
-FILE=-
+FILE==
 CMDS=<<EOF
 e asm.arch=x86
 e asm.bits=64
@@ -3209,7 +3203,7 @@ EOF
 RUN
 
 NAME=aes
-FILE=-
+FILE==
 CMDS=<<EOF
 e asm.arch=x86
 e asm.bits=64
@@ -3780,7 +3774,7 @@ EOF
 RUN
 
 NAME=x86_64 show registers in table
-FILE=-
+FILE==
 CMDS=<<EOF
 e asm.arch=x86
 e asm.bits=64
@@ -3825,7 +3819,7 @@ EOF
 RUN
 
 NAME=lea pseudo improvements (pseudo disabled)
-FILE=-
+FILE==
 CMDS=<<EOF
 e asm.bytes=true
 e asm.arch=x86
@@ -3867,7 +3861,7 @@ EOF
 RUN
 
 NAME=lea pseudo improvements (pseudo enabled)
-FILE=-
+FILE==
 CMDS=<<EOF
 e asm.arch=x86
 e asm.bytes=true
@@ -3905,5 +3899,83 @@ EXPECT=<<EOF
 |           0x00000041      488d442404     rax = var_4h
 |           0x00000046      488d4508       rax = arg_8h
 |           0x0000004a      488d45f8       rax = var_8h
+EOF
+RUN
+
+NAME=xref graph
+FILE=bins/pe/libzmq-v100-mt-4_0_4.dll
+CMDS=<<EOF
+aa
+aac
+axg 0x1004aa5e
+axgj 0x1004aa5e~{}
+EOF
+EXPECT=<<EOF
+- 0x1004aa5e fcn 0x1004aa5e fcn.1004aa5e
+  - 0x1004ab07 fcn 0x1004aaff fcn.1004aaff
+  - 0x1004aaff fcn 0x1004aaff fcn.1004aaff
+    - 0x1004ab94 ???
+    - 0x1004aba0 ???
+    - 0x1004d380 ???
+    - 0x1004d3cf ???
+{
+  "268741214": {
+    "type": "fcn",
+    "fcn_addr": 268741214,
+    "name": "fcn.1004aa5e",
+    "refs": [
+      {
+        "268741383": {
+          "type": "fcn",
+          "fcn_addr": 268741375,
+          "name": "fcn.1004aaff",
+          "refs": [
+            {
+              "268741375": {
+                "type": "fcn",
+                "fcn_addr": 268741375,
+                "name": "fcn.1004aaff",
+                "refs": [
+                  {
+                    "268741524": {
+                      "type": "???",
+                      "refs": [
+                        
+                      ]
+                    }
+                  },
+                  {
+                    "268741536": {
+                      "type": "???",
+                      "refs": [
+                        
+                      ]
+                    }
+                  },
+                  {
+                    "268751744": {
+                      "type": "???",
+                      "refs": [
+                        
+                      ]
+                    }
+                  },
+                  {
+                    "268751823": {
+                      "type": "???",
+                      "refs": [
+                        
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
 EOF
 RUN

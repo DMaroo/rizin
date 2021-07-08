@@ -10,28 +10,30 @@ format   smd
 iorw     false
 block    0x100
 type     ROM
+Name     Value                            
+------------------------------------------
 arch     m68k
 baddr    0x0
 binsz    160504
 bits     16
-canary   false
 retguard false
 class    SEGA MEGASIS    (C)2015 James L.
-crypto   false
-endian   big
-havecode true
+endian   BE
 laddr    0x0
-linenum  false
-lsyms    false
 machine  Sega Megadrive
-nx       false
 os       smd
-pic      false
-relocs   false
+stripped false
+crypto   false
+havecode true
+va       true
 sanitiz  false
 static   true
-stripped false
-va       true
+linenum  false
+lsyms    false
+canary   false
+PIE      false
+RELROCS  false
+NX       false
 EOF
 RUN
 
@@ -126,6 +128,31 @@ EXPECT=<<EOF
 EOF
 RUN
 
+NAME=sega megadrive maps
+FILE=bins/smd/LiquidSpaceDodgerV3.bin
+CMDS=om
+EXPECT=<<EOF
+ 3 fd: 3 +0x00000000 0x00000000 - 0x000000ff r-- fmap.vtable
+ 2 fd: 3 +0x00000100 0x00000100 - 0x000001ff r-- fmap.header
+ 1 fd: 3 +0x00000200 0x00000200 - 0x000272f7 r-x fmap.text
+EOF
+RUN
+
+NAME=sega megadrive sections
+FILE=bins/smd/LiquidSpaceDodgerV3.bin
+CMDS=iS
+EXPECT=<<EOF
+[Sections]
+
+nth paddr          size vaddr         vsize perm name   
+--------------------------------------------------------
+0   0x00000000    0x100 0x00000000    0x100 -r-- vtable
+1   0x00000100    0x100 0x00000100    0x100 -r-- header
+2   0x00000200  0x270f8 0x00000200  0x270f8 -r-x text
+
+EOF
+RUN
+
 NAME=smd strings
 FILE=malloc://256k
 CMDS=<<EOF
@@ -135,8 +162,8 @@ izz
 EOF
 EXPECT=<<EOF
 [Strings]
-nth paddr      vaddr      len size section type  string
--------------------------------------------------------
+nth paddr      vaddr      len size section type  string                                                                                                                                                           
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 0   0x00000100 0x00000100 160 161          ascii SEGA GENESIS    (C)SEGA 1995.MARCART. BRADESCO                                  CART. BRADESCO                                  GM 00000001-00W`J               
 6   0x00007974 0x00007974 24  25           ascii AT&FV0B0+FCLASS=1;+FF=1\r
 7   0x00007ad9 0x00007ad9 15  16           ascii NMEMORIA CHEIA.

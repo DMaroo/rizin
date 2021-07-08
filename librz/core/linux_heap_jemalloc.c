@@ -40,7 +40,7 @@ static GHT GH(je_get_va_symbol)(const char *path, const char *symname) {
 	}
 
 	RzBinOptions opt;
-	rz_bin_options_init(&opt, -1, 0, 0, false);
+	rz_bin_options_init(&opt, -1, 0, 0, false, false);
 	if (rz_bin_open(core->bin, path, &opt)) {
 		RzList *syms = rz_bin_get_symbols(core->bin);
 		if (!syms) {
@@ -492,12 +492,12 @@ static void GH(jemalloc_get_runs)(RzCore *core, const char *input) {
 
 static int GH(cmd_dbg_map_jemalloc)(RzCore *core, const char *input) {
 	const char *help_msg[] = {
-		"Usage:", "dmh", " # Memory map heap",
-		"dmha", "[arena_t]", "show all arenas created, or print arena_t structure for given arena",
-		"dmhb", "[arena_t]", "show all bins created for given arena",
-		"dmhc", "*|[arena_t]", "show all chunks created in all arenas, or show all chunks created for a given arena_t instance",
+		"Usage:", "dmx", " # Jemalloc heap parsing commands",
+		"dmxa", "[arena_t]", "show all arenas created, or print arena_t structure for given arena",
+		"dmxb", "[arena_t]", "show all bins created for given arena",
+		"dmxc", "*|[arena_t]", "show all chunks created in all arenas, or show all chunks created for a given arena_t instance",
 		// "dmhr", "[arena_chunk_t]", "print all runs created for a given arena_chunk_t instance",
-		"dmh?", "", "Show map heap help", NULL
+		"dmx?", "", "Show map heap help", NULL
 	};
 
 	switch (input[0]) {

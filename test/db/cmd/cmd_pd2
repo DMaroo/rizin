@@ -1,5 +1,5 @@
 NAME=Cd 4096
-FILE=-
+FILE==
 CMDS=<<EOF
 e asm.arch=x86
 e asm.bits=64
@@ -12,7 +12,7 @@ EOF
 RUN
 
 NAME=Cd 4096 asm.meta=false
-FILE=-
+FILE==
 CMDS=<<EOF
 e asm.meta=false
 e asm.arch=x86
@@ -50,7 +50,7 @@ RUN
 
 
 NAME=bytes for invalid insn (#11434)
-FILE=-
+FILE==
 CMDS=<<EOF
 e asm.bytes=true
 e asm.arch=x86
@@ -333,9 +333,9 @@ NAME=esil func cmt refline
 FILE=bins/elf/ls
 CMDS=<<EOF
 e asm.bytes=true
-e io.cache=true
 e asm.emu=true
 e asm.types=0
+e io.cache=true
 wx 7d0a7f08eb00 @ 0x5b02
 pd 4 @ 0x5b02
 EOF
@@ -343,17 +343,16 @@ EXPECT=<<EOF
         ,=< 0x00005b02      7d0a           jge   0x5b0e                ; rip=0x5b0e -> 0x8d4890f4 ; likely
        ,==< 0x00005b04      7f08           jg    0x5b0e                ; rip=0x5b0e -> 0x8d4890f4 ; likely
       ,===< 0x00005b06      eb00           jmp   0x5b08                ; rip=0x5b08 -> 0xc30a15ff
-      `---> 0x00005b08      ff150ac30100   call  qword [reloc.__libc_start_main] ; [0x21e18:8]=0 ; rsp=0xfffffffffffffff8 ; rip=0x0
+      `---> 0x00005b08      ff150ac30100   call  qword [reloc.__libc_start_main] ; [reloc.__libc_start_main:8]=0x23d10 reloc.target.__libc_start_main ; rsp=0xfffffffffffffff8 ; rip=0x23d10 -> 0x464c457f reloc.target.__libc_start_main
 EOF
 RUN
 
 NAME=aht asm.cmt.right=false fix (#12330)
-FILE=-
+FILE==
 CMDS=<<EOF
 e asm.bytes=true
 e asm.arch=x86
 e asm.bits=64
-e io.cache=true
 wx 488b4608
 td "struct ms { char b[8]; int member1; int member2; };"
 aht ms.member1
@@ -868,7 +867,7 @@ EOF
 RUN
 
 NAME=seek with spaces
-FILE=-
+FILE==
 CMDS=<<EOF
 wx 010203040506
 p8 1 @ 1 + 3

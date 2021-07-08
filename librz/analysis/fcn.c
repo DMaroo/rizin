@@ -1702,7 +1702,7 @@ RZ_API int rz_analysis_function_complexity(RzAnalysisFunction *fcn) {
 // tfj and afsj call this function
 RZ_API char *rz_analysis_function_get_json(RzAnalysisFunction *function) {
 	RzAnalysis *a = function->analysis;
-	PJ *pj = a->coreb.pjWithEncoding(a->coreb.core);
+	PJ *pj = pj_new();
 	unsigned int i;
 	const char *ret_type = rz_type_func_ret(a->typedb, function->name);
 	int argc = rz_type_func_args_count(a->typedb, function->name);
@@ -1757,7 +1757,7 @@ RZ_API RZ_OWN char *rz_analysis_function_get_signature(RzAnalysisFunction *funct
 	char *args = strdup("");
 	for (i = 0; i < argc; i++) {
 		const char *arg_name = rz_type_func_args_name(a->typedb, realname, i);
-		const char *arg_type = rz_type_func_args_type(a->typedb, realname, i);
+		char *arg_type = rz_type_func_args_type(a->typedb, realname, i);
 		// Here we check if the type is a pointer, in this case we don't put
 		// the space between type and name for the style reasons
 		// "char *var" looks much better than "char * var"
@@ -1766,6 +1766,7 @@ RZ_API RZ_OWN char *rz_analysis_function_get_signature(RzAnalysisFunction *funct
 			? rz_str_newf("%s%s%s%s", args, arg_type, maybe_space, arg_name)
 			: rz_str_newf("%s%s%s%s, ", args, arg_type, maybe_space, arg_name);
 		free(args);
+		free(arg_type);
 		args = new_args;
 	}
 	char *signature = rz_str_newf("%s %s (%s);", ret_type ? ret_type : "void", realname, args);

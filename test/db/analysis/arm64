@@ -1,5 +1,5 @@
 NAME=rcall
-FILE=-
+FILE==
 CMDS=<<EOF
 e asm.arch=arm
 e asm.bits=64
@@ -55,8 +55,8 @@ iE
 EOF
 EXPECT=<<EOF
 [Imports]
-nth vaddr      bind   type   lib name
--------------------------------------
+nth vaddr      bind   type   lib name             
+--------------------------------------------------
 3   0x00020060 GLOBAL NOTYPE     _bss_end__
 4   0x000006b0 GLOBAL FUNC       realloc
 5   0x000006c0 GLOBAL FUNC       __cxa_finalize
@@ -75,8 +75,8 @@ nth vaddr      bind   type   lib name
 
 [Exports]
 
-nth paddr      vaddr      bind   type size lib name
----------------------------------------------------
+nth paddr      vaddr      bind   type size lib name            
+---------------------------------------------------------------
 6   0x0000aa20 0x0000aa20 GLOBAL FUNC 1176     Java_o__003dc_e
 EOF
 RUN
@@ -126,7 +126,7 @@ EOF
 RUN
 
 NAME=ao mte big endian
-FILE=-
+FILE==
 ARGS=-a arm -b 64 -e cfg.bigendian=true
 CMDS=<<EOF
 wx 91a0090c918201099ac813e8
@@ -191,7 +191,7 @@ EOF
 RUN
 
 NAME=Variable analysis with stp/preindexed str
-FILE=-
+FILE==
 ARGS=-a arm -b 64
 CMDS=<<EOF
 e analysis.vars.stackname=true

@@ -3,6 +3,7 @@
 #include <rz_project.h>
 
 #include "../unit/minunit.h"
+#include "../unit/rz_arch_buffer.h"
 
 bool test_cpu_profiles() {
 	// 1. Open the file
@@ -14,11 +15,9 @@ bool test_cpu_profiles() {
 	mu_assert_notnull(file, "opening the firmware");
 	rz_core_bin_load(core, fpath, loadaddr);
 
-	rz_config_set(core->config, "asm.cpu", "ATTiny48");
-	const char *asmcpu = rz_config_get(core->config, "asm.cpu");
-	const char *dir_prefix = rz_config_get(core->config, "dir.prefix");
-	const char *asmarch = rz_config_get(core->config, "asm.arch");
-	rz_arch_profiles_init(core->analysis->arch_target, asmcpu, asmarch, dir_prefix);
+	const char *tempfile = rz_file_temp(".sdb");
+	rz_file_dump(tempfile, cpu_buffer, sizeof(cpu_buffer), false);
+	rz_arch_load_profile_sdb(core->analysis->arch_target, tempfile);
 
 	// 2. Analyse the file
 	rz_arch_profile_add_flag_every_io(core->analysis->arch_target->profile, core->flags);
@@ -47,6 +46,7 @@ bool test_cpu_profiles() {
 	RzSerializeResultInfo *res = rz_serialize_result_info_new();
 	mu_assert_notnull(res, "result info new");
 	err = rz_project_load_file(core, ".tmp/cpu_profile.rzdb", true, res);
+	rz_serialize_result_info_free(res);
 	mu_assert_eq(err, RZ_PROJECT_ERR_SUCCESS, "project load err");
 
 	// 7. Check the values again
@@ -69,13 +69,9 @@ bool test_platform_profiles() {
 	mu_assert_notnull(file, "opening the binary");
 	rz_core_bin_load(core, fpath, loadaddr);
 
-	rz_config_set(core->config, "asm.cpu", "arm1176");
-	rz_config_set(core->config, "asm.platform", "bcm2835");
-	const char *asmcpu = rz_config_get(core->config, "asm.cpu");
-	const char *dir_prefix = rz_config_get(core->config, "dir.prefix");
-	const char *asmarch = rz_config_get(core->config, "asm.arch");
-	const char *asmplatform = rz_config_get(core->config, "asm.platform");
-	rz_arch_platform_init(core->analysis->platform_target, asmarch, asmcpu, asmplatform, dir_prefix);
+	const char *tempfile = rz_file_temp(".sdb");
+	rz_file_dump(tempfile, platform_buffer, sizeof(platform_buffer), false);
+	rz_arch_load_platform_sdb(core->analysis->platform_target, tempfile);
 
 	// 2. Analyse the file
 	rz_arch_platform_add_flags_comments(core);
@@ -101,6 +97,7 @@ bool test_platform_profiles() {
 	RzSerializeResultInfo *res = rz_serialize_result_info_new();
 	mu_assert_notnull(res, "result info new");
 	err = rz_project_load_file(core, ".tmp/cpu_platform.rzdb", true, res);
+	rz_serialize_result_info_free(res);
 	mu_assert_eq(err, RZ_PROJECT_ERR_SUCCESS, "project load err");
 
 	// 7. Check the values again

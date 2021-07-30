@@ -44,7 +44,7 @@ typedef struct { // Keep in sync with io_windbg.c
 	PDEBUG_ADVANCED3 dbgAdvanced;
 } DbgEngContext;
 
-static bool __is_target_kernel(DbgEngContext *idbg) {
+static bool is_target_kernel(DbgEngContext *idbg) {
 	ULONG Class, Qualifier;
 	if (SUCCEEDED(ITHISCALL(dbgCtrl, GetDebuggeeType, &Class, &Qualifier))) {
 		if (Class == DEBUG_CLASS_KERNEL) {
@@ -73,7 +73,7 @@ static int windbg_select(RzDebug *dbg, int pid, int tid) {
 	DbgEngContext *idbg = dbg->plugin_data;
 	rz_return_val_if_fail(idbg && idbg->initialized, 0);
 	ULONG Id = tid;
-	if (!__is_target_kernel(idbg)) {
+	if (!is_target_kernel(idbg)) {
 		ITHISCALL(dbgSysObj, GetThreadIdBySystemId, tid, &Id);
 	}
 	if (SUCCEEDED(ITHISCALL(dbgSysObj, SetCurrentThreadId, Id))) {
@@ -125,10 +125,10 @@ static int windbg_stop(RzDebug *dbg) {
 
 static bool do_break = false;
 
-static void __break(void *user) {
+static void break_debugger(void *user) {
 	RzDebug *dbg = (RzDebug *)user;
 	DbgEngContext *idbg = dbg->plugin_data;
-	if (__is_target_kernel(idbg)) {
+	if (is_target_kernel(idbg)) {
 		windbg_stop(dbg);
 	}
 	do_break = true;
@@ -138,8 +138,8 @@ static int windbg_wait(RzDebug *dbg, int pid) {
 	DbgEngContext *idbg = dbg->plugin_data;
 	rz_return_val_if_fail(idbg && idbg->initialized, 0);
 	ULONG Type, ProcessId, ThreadId;
-	rz_cons_break_push(__break, dbg);
-	const ULONG timeout = __is_target_kernel(idbg) ? INFINITE : TIMEOUT;
+	rz_cons_break_push(break_debugger, dbg);
+	const ULONG timeout = is_target_kernel(idbg) ? INFINITE : TIMEOUT;
 	HRESULT hr;
 	while ((hr = ITHISCALL(dbgCtrl, WaitForEvent, DEBUG_WAIT_DEFAULT, timeout)) == S_FALSE) {
 		if (do_break) {
@@ -154,7 +154,7 @@ static int windbg_wait(RzDebug *dbg, int pid) {
 		return RZ_DEBUG_REASON_DEAD;
 	}
 	ITHISCALL(dbgCtrl, GetLastEventInformation, &Type, &ProcessId, &ThreadId, NULL, 0, NULL, NULL, 0, NULL);
-	if (!__is_target_kernel(idbg)) {
+	if (!is_target_kernel(idbg)) {
 		ITHISCALL(dbgSysObj, GetCurrentProcessSystemId, (PULONG)&dbg->pid);
 		ITHISCALL(dbgSysObj, GetCurrentThreadSystemId, (PULONG)&dbg->tid);
 	} else {

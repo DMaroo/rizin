@@ -187,4 +187,10 @@ RzDebugInfo *w32_info(RzDebug *dbg, const char *arg);
 RzList *w32_pid_list(RzDebug *dbg, int pid, RzList *list);
 
 RzList *w32_desc_list(int pid);
+
+#if __arm64__
+int w32_hwwp_arm64_add(RzDebug *dbg, RzBreakpoint *bp, RzBreakpointItem *b);
+int w32_hwwp_arm64_del(RzDebug *dbg, RzBreakpoint *bp, RzBreakpointItem *b);
+#endif
+
 #endif

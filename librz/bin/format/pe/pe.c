@@ -55,6 +55,7 @@ static inline int is_arm(struct PE_(rz_bin_pe_obj_t) * bin) {
 	switch (bin->nt_headers->file_header.Machine) {
 	case PE_IMAGE_FILE_MACHINE_RPI2: // 462
 	case PE_IMAGE_FILE_MACHINE_ARM:
+	case PE_IMAGE_FILE_MACHINE_ARM64:
 	case PE_IMAGE_FILE_MACHINE_THUMB:
 		return 1;
 	}
@@ -4064,10 +4065,8 @@ char *PE_(rz_bin_pe_get_class)(struct PE_(rz_bin_pe_obj_t) * bin) {
 int PE_(rz_bin_pe_get_bits)(struct PE_(rz_bin_pe_obj_t) * bin) {
 	int bits = 32;
 	if (bin && bin->nt_headers) {
-		if (is_arm(bin)) {
-			if (is_thumb(bin)) {
-				bits = 16;
-			}
+		if (is_arm(bin) && is_thumb(bin)) {
+			bits = 16;
 		} else {
 			switch (bin->nt_headers->optional_header.Magic) {
 			case PE_IMAGE_FILE_TYPE_PE32: bits = 32; break;

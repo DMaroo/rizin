@@ -16,9 +16,261 @@
 #define VFILE_NAME_RELOC_TARGETS "reloc-targets"
 #define VFILE_NAME_PATCHED       "patched"
 
+#ifdef RZ_BIN_ELF64
+#define rz_buf_append_word rz_buf_append_ut64
+#else
+#define rz_buf_append_word rz_buf_append_ut32
+#endif
+
 static RzBinInfo *info(RzBinFile *bf);
 static void patch_relocs(RzBinFile *bf, struct Elf_(rz_bin_elf_obj_t) * bin);
 static RzList *imports(RzBinFile *bf);
+
+struct special_symbol_translation {
+	RzBinSpecialSymbol symbol;
+	ut64 (*get_addr)(ELFOBJ *bin);
+};
+
+static struct special_symbol_translation special_symbol_translation_table[] = {
+	{ RZ_BIN_SPECIAL_SYMBOL_ENTRY, Elf_(rz_bin_elf_get_entry_offset) },
+	{ RZ_BIN_SPECIAL_SYMBOL_MAIN, Elf_(rz_bin_elf_get_main_offset) },
+	{ RZ_BIN_SPECIAL_SYMBOL_INIT, Elf_(rz_bin_elf_get_init_offset) },
+	{ RZ_BIN_SPECIAL_SYMBOL_FINI, Elf_(rz_bin_elf_get_fini_offset) },
+};
+
+static Sdb *get_sdb(RzBinFile *bf) {
+	rz_return_val_if_fail(bf && bf->o && bf->o->bin_obj, NULL);
+
+	ELFOBJ *bin = bf->o->bin_obj;
+	return bin->kv;
+}
+
+#ifndef RZ_BIN_CGC
+static int check_buffer_aux(RzBuffer *buf) {
+	rz_return_val_if_fail(buf, ELFCLASSNONE);
+
+	ut8 tmp[SELFMAG + 1] = { 0 };
+
+	if (rz_buf_read_at(buf, 0, tmp, SELFMAG + 1) < 0) {
+		return ELFCLASSNONE;
+	}
+
+	if (memcmp(tmp, ELFMAG, SELFMAG)) {
+		return ELFCLASSNONE;
+	}
+
+	return tmp[SELFMAG];
+}
+#endif
+
+static bool load_buffer(RZ_UNUSED RzBinFile *bf, RzBinObject *obj, RzBuffer *buf, RZ_UNUSED Sdb *sdb) {
+	rz_return_val_if_fail(obj, NULL);
+
+	ELFOBJ *bin = Elf_(rz_bin_elf_new_buf)(buf, &obj->opts);
+
+	if (!bin) {
+		return false;
+	}
+
+	obj->bin_obj = bin;
+	return true;
+}
+
+static ut64 baddr(RzBinFile *bf) {
+	rz_return_val_if_fail(bf && bf->o, UT64_MAX);
+
+	ELFOBJ *bin = bf->o->bin_obj;
+	return Elf_(rz_bin_elf_get_baddr)(bin);
+}
+
+static ut64 boffset(RzBinFile *bf) {
+	rz_return_val_if_fail(bf && bf->o, UT64_MAX);
+
+	ELFOBJ *bin = bf->o->bin_obj;
+	return Elf_(rz_bin_elf_get_boffset)(bin);
+}
+
+static ut64 binsym_aux(ELFOBJ *bin, RzBinSpecialSymbol sym) {
+	for (size_t i = 0; i < RZ_ARRAY_SIZE(special_symbol_translation_table); i++) {
+		if (sym == special_symbol_translation_table[i].symbol) {
+			return special_symbol_translation_table[i].get_addr(bin);
+		}
+	}
+
+	return UT64_MAX;
+}
+
+static void rz_bin_addr_new_set_arm_bits(ELFOBJ *bin, RzBinAddr *ptr) {
+	ptr->bits = Elf_(rz_bin_elf_get_bits)(bin);
+	if (ptr->bits == 64) {
+		return;
+	}
+
+	if (ptr->vaddr & 1) {
+		ptr->vaddr--;
+		ptr->bits = 16;
+	}
+
+	if (ptr->paddr & 1) {
+		ptr->paddr--;
+		ptr->bits = 16;
+	}
+}
+
+static RzBinAddr *rz_bin_addr_new(ELFOBJ *bin, ut64 paddr) {
+	RzBinAddr *result = RZ_NEW0(RzBinAddr);
+	if (!result) {
+		return NULL;
+	}
+
+	result->paddr = paddr;
+	result->vaddr = Elf_(rz_bin_elf_p2v_new)(bin, paddr);
+	if (result->vaddr == UT64_MAX) {
+		result->vaddr = paddr;
+	}
+
+
+	if (bin->ehdr.e_machine == EM_ARM) {
+		rz_bin_addr_new_set_arm_bits(bin, result);
+	}
+
+	return result;
+}
+
+static RzBinAddr *binsym(RzBinFile *bf, RzBinSpecialSymbol sym) {
+	rz_return_val_if_fail(bf && bf->o && bf->o, NULL);
+
+	ELFOBJ *bin = bf->o->bin_obj;
+
+	ut64 addr = binsym_aux(bin, sym);
+	if (addr == UT64_MAX) {
+		return NULL;
+	}
+
+	return rz_bin_addr_new(bin, addr);
+}
+
+#ifndef RZ_BIN_CGC
+static void headers(RzBinFile *bf) {
+#define print bf->rbin->cb_printf
+	print("0x%08" PFMT64x "  ELF MAGIC   0x%08x\n", (ut64)E_IDENT_OFFSET, rz_buf_read_le32_at(bf->buf, E_IDENT_OFFSET));
+	print("0x%08" PFMT64x "  Type        0x%04x\n", (ut64)E_TYPE_OFFSET, rz_buf_read_le16_at(bf->buf, E_TYPE_OFFSET));
+	print("0x%08" PFMT64x "  Machine     0x%04x\n", (ut64)E_MACHINE_OFFSET, rz_buf_read_le16_at(bf->buf, E_MACHINE_OFFSET));
+	print("0x%08" PFMT64x "  Version     0x%08x\n", (ut64)E_VERSION_OFFSET, rz_buf_read_le32_at(bf->buf, E_VERSION_OFFSET));
+	print("0x%08" PFMT64x "  Entrypoint  0x%08x\n", (ut64)E_ENTRYPOINT_OFFSET, rz_buf_read_le32_at(bf->buf, E_ENTRYPOINT_OFFSET));
+	print("0x%08" PFMT64x "  PhOff       0x%08x\n", (ut64)E_PHOFF_OFFSET, rz_buf_read_le32_at(bf->buf, E_PHOFF_OFFSET));
+	print("0x%08" PFMT64x "  ShOff       0x%08x\n", (ut64)E_SHOFF_OFFSET, rz_buf_read_le32_at(bf->buf, E_SHOFF_OFFSET));
+	print("0x%08" PFMT64x "  Flags       0x%08x\n", (ut64)E_FLAGS_OFFSET, rz_buf_read_le32_at(bf->buf, E_FLAGS_OFFSET));
+	print("0x%08" PFMT64x "  EhSize      %d\n", (ut64)E_EHSIZE_OFFSET, rz_buf_read_le16_at(bf->buf, E_EHSIZE_OFFSET));
+	print("0x%08" PFMT64x "  PhentSize   %d\n", (ut64)E_PHENTSIZE_OFFSET, rz_buf_read_le16_at(bf->buf, E_PHENTSIZE_OFFSET));
+	print("0x%08" PFMT64x "  PhNum       %d\n", (ut64)E_PHNUM_OFFSET, rz_buf_read_le16_at(bf->buf, E_PHNUM_OFFSET));
+	print("0x%08" PFMT64x "  ShentSize   %d\n", (ut64)E_SHENTSIZE_OFFSET, rz_buf_read_le16_at(bf->buf, E_SHENTSIZE_OFFSET));
+	print("0x%08" PFMT64x "  ShNum       %d\n", (ut64)E_SHNUM_OFFSET, rz_buf_read_le16_at(bf->buf, E_SHNUM_OFFSET));
+	print("0x%08" PFMT64x "  ShrStrndx   %d\n", (ut64)E_SHSTRNDX_OFFSET, rz_buf_read_le16_at(bf->buf, E_SHSTRNDX_OFFSET));
+}
+
+static bool create_set_e_ident(RzBuffer *result) {
+	return rz_buf_append_bytes(result, (ut8 *)ELFMAG, SELFMAG) &&
+#ifdef RZ_BIN_ELF64
+	rz_buf_append_bytes(result, (ut8 *)"\x2\x1\x1\x0", 4) &&
+#else
+	rz_buf_append_bytes(result, (ut8 *)"\x1\x1\x1\x0", 4) &&
+#endif
+	rz_buf_append_nbytes(result, 8);
+}
+
+static bool create_set_e_machine(RzBuffer *result, bool is_arm) {
+#ifdef RZ_BIN_ELF64
+	return rz_buf_append_ut16(result, EM_X86_64);
+#else
+	if (is_arm) {
+		return rz_buf_append_ut16(result, EM_ARM);
+	}
+
+	return rz_buf_append_ut16(result, EM_386);
+#endif
+}
+
+static bool create_set_ehdr(RzBuffer *result, bool is_arm) {
+	return create_set_e_ident(result) &&
+	rz_buf_append_ut16(result, ET_EXEC) &&
+	create_set_e_machine(result, is_arm) &&
+	rz_buf_append_ut32(result, EV_CURRENT) &&
+	rz_buf_append_word(result, sizeof(Elf_(Ehdr)) + sizeof(Elf_(Phdr))) &&	// e_entry
+	rz_buf_append_word(result, sizeof(Elf_(Ehdr))) && 			// e_phoff
+	rz_buf_append_word(result, 0) && 					// e_shoff
+	rz_buf_append_ut32(result, 0) && 					// e_flags
+	rz_buf_append_ut16(result, sizeof(Elf_(Ehdr))) &&			// e_ehsize
+	rz_buf_append_ut16(result, sizeof(Elf_(Phdr))) && 			// e_phentsize
+	rz_buf_append_ut16(result, 1) && 					// e_phnum
+	rz_buf_append_ut16(result, 0) && 					// e_shentsize
+	rz_buf_append_ut16(result, 0) && 					// e_shnum
+	rz_buf_append_ut16(result, 0); 						// e_shstrndx
+}
+
+static bool create_set_phdr(RzBuffer *result, Elf_(Word) baddr, int codelen) {
+	ut64 length = sizeof(Elf_(Ehdr)) + sizeof(Elf_(Phdr)) + codelen;
+
+	return rz_buf_append_ut32(result, PT_LOAD) &&
+#ifdef RZ_BIN_ELF64
+	rz_buf_append_ut32(result, PF_X | PF_R) &&
+	rz_buf_append_ut64(result, 0) && // p_offset
+	rz_buf_append_ut64(result, baddr) && // p_vaddr
+	rz_buf_append_ut64(result, baddr) && // p_paddr
+	rz_buf_append_ut64(result, length) && // p_filesz
+	rz_buf_append_ut64(result, length) && // p_memsz
+	rz_buf_append_ut64(result, 0x200000); // p_align
+#else
+	rz_buf_append_ut32(result, 0) && // p_offset
+	rz_buf_append_ut32(result, baddr) && // p_vaddr
+	rz_buf_append_ut32(result, baddr) && // p_paddr
+	rz_buf_append_ut32(result, length) && // p_filesz
+	rz_buf_append_ut32(result, length) && // p_memsz
+	rz_buf_append_ut32(result, PF_X | PF_R) && // p_flags
+	rz_buf_append_ut64(result, 0x1000); // p_align
+#endif
+}
+
+static Elf_(Word) create_get_baddr(bool is_arm) {
+#ifdef RZ_BIN_ELF64
+	return 0x400000LL;
+#else
+	if (is_arm) {
+		return 0x40000;
+	}
+
+	return 0x8048000;
+#endif
+}
+
+static RzBuffer *create_elf(RzBin *bin, const ut8 *code, int codelen, const ut8 *data, int datalen, RzBinArchOptions *opt) {
+	rz_return_val_if_fail(bin && opt && opt->arch, NULL);
+
+	RzBuffer *result = rz_buf_new_with_bytes(NULL, 0);
+
+	bool is_arm = !strcmp(opt->arch, "arm");
+	Elf_(Word) baddr = create_get_baddr(is_arm);
+
+	if (!create_set_ehdr(result, is_arm)  ||
+		!create_set_phdr(result, baddr, codelen) ||
+		!rz_buf_append_bytes(result, code, codelen)) {
+		rz_buf_free(result);
+		return NULL;
+	}
+
+	if (data && datalen > 0) {
+		//ut32 data_section = buf->length;
+		eprintf("Warning: DATA section not support for ELF yet\n");
+		rz_buf_append_bytes(result, data, datalen);
+	}
+
+	return result;
+}
+#endif
+
+static void destroy(RzBinFile *bf) {
+	Elf_(rz_bin_elf_free)(bf->o->bin_obj);
+}
 
 static void fix_thumb_symbol(RzBinSymbol *symbol) {
 	symbol->bits = 16;
@@ -200,71 +452,6 @@ static char *setphname(ut16 mach, Elf_(Word) ptyp) {
 	}
 
 	return strdup("UNKNOWN");
-}
-
-static Sdb *get_sdb(RzBinFile *bf) {
-	RzBinObject *o = bf->o;
-	if (o && o->bin_obj) {
-		struct Elf_(rz_bin_elf_obj_t) *bin = (struct Elf_(rz_bin_elf_obj_t) *)o->bin_obj;
-		return bin->kv;
-	}
-	return NULL;
-}
-
-static bool load_buffer(RzBinFile *bf, RzBinObject *obj, RzBuffer *buf, Sdb *sdb) {
-	ELFOBJ *res = Elf_(rz_bin_elf_new_buf)(buf, &obj->opts);
-	if (res) {
-		obj->bin_obj = res;
-		return true;
-	}
-
-	return false;
-}
-
-static ut64 baddr(RzBinFile *bf) {
-	return Elf_(rz_bin_elf_get_baddr)(bf->o->bin_obj);
-}
-
-static ut64 boffset(RzBinFile *bf) {
-	return Elf_(rz_bin_elf_get_boffset)(bf->o->bin_obj);
-}
-
-static RzBinAddr *binsym(RzBinFile *bf, RzBinSpecialSymbol sym) {
-	struct Elf_(rz_bin_elf_obj_t) *obj = bf->o->bin_obj;
-	RzBinAddr *ret = NULL;
-	ut64 addr = 0LL;
-
-	switch (sym) {
-	case RZ_BIN_SPECIAL_SYMBOL_ENTRY:
-		addr = Elf_(rz_bin_elf_get_entry_offset)(bf->o->bin_obj);
-		break;
-	case RZ_BIN_SPECIAL_SYMBOL_MAIN:
-		addr = Elf_(rz_bin_elf_get_main_offset)(bf->o->bin_obj);
-		break;
-	case RZ_BIN_SPECIAL_SYMBOL_INIT:
-		addr = Elf_(rz_bin_elf_get_init_offset)(bf->o->bin_obj);
-		break;
-	case RZ_BIN_SPECIAL_SYMBOL_FINI:
-		addr = Elf_(rz_bin_elf_get_fini_offset)(bf->o->bin_obj);
-		break;
-	default:
-		break;
-	}
-	if (addr && addr != UT64_MAX && (ret = RZ_NEW0(RzBinAddr))) {
-		struct Elf_(rz_bin_elf_obj_t) *bin = bf->o->bin_obj;
-		bool is_arm = bin->ehdr.e_machine == EM_ARM;
-		ret->paddr = addr;
-		ret->vaddr = Elf_(rz_bin_elf_p2v_new)(obj, addr);
-		if (ret->vaddr == UT64_MAX) {
-			ret->vaddr = addr;
-		}
-		if (is_arm && addr & 1) {
-			ret->bits = 16;
-			ret->vaddr--;
-			ret->paddr--;
-		}
-	}
-	return ret;
 }
 
 static bool is_wordable_section(const char *name) {
@@ -914,6 +1101,27 @@ static RzList *maps(RzBinFile *bf) {
 	return ret;
 }
 
+static RzBinAddr *newEntry(RzBinFile *bf, ut64 hpaddr, ut64 hvaddr, ut64 vaddr, int type, int bits) {
+	rz_return_val_if_fail(bf && bf->o && bf->o->bin_obj, NULL);
+
+	struct Elf_(rz_bin_elf_obj_t) *obj = bf->o->bin_obj;
+	RzBinAddr *ptr = RZ_NEW0(RzBinAddr);
+	if (ptr) {
+		ptr->paddr = Elf_(rz_bin_elf_v2p_new)(obj, vaddr);
+		ptr->vaddr = vaddr;
+		ptr->hpaddr = hpaddr;
+		ptr->hvaddr = hvaddr;
+		ptr->bits = bits;
+		ptr->type = type;
+		//realign due to thumb
+		if (bits == 16 && ptr->vaddr & 1) {
+			ptr->paddr--;
+			ptr->vaddr--;
+		}
+	}
+	return ptr;
+}
+
 static RzList *sections(RzBinFile *bf) {
 	ELFOBJ *obj = (bf && bf->o) ? bf->o->bin_obj : NULL;
 	RzBinSection *ptr = NULL;
@@ -1041,27 +1249,6 @@ static RzList *sections(RzBinFile *bf) {
 	return ret;
 }
 
-static RzBinAddr *newEntry(RzBinFile *bf, ut64 hpaddr, ut64 hvaddr, ut64 vaddr, int type, int bits) {
-	rz_return_val_if_fail(bf && bf->o && bf->o->bin_obj, NULL);
-
-	struct Elf_(rz_bin_elf_obj_t) *obj = bf->o->bin_obj;
-	RzBinAddr *ptr = RZ_NEW0(RzBinAddr);
-	if (ptr) {
-		ptr->paddr = Elf_(rz_bin_elf_v2p_new)(obj, vaddr);
-		ptr->vaddr = vaddr;
-		ptr->hpaddr = hpaddr;
-		ptr->hvaddr = hvaddr;
-		ptr->bits = bits;
-		ptr->type = type;
-		//realign due to thumb
-		if (bits == 16 && ptr->vaddr & 1) {
-			ptr->paddr--;
-			ptr->vaddr--;
-		}
-	}
-	return ptr;
-}
-
 static void process_constructors(RzBinFile *bf, RzList *ret, int bits) {
 	RzList *secs = sections(bf);
 	RzListIter *iter;
@@ -1107,81 +1294,64 @@ static void process_constructors(RzBinFile *bf, RzList *ret, int bits) {
 	rz_list_free(secs);
 }
 
-static RzList *entries(RzBinFile *bf) {
-	rz_return_val_if_fail(bf && bf->o && bf->o->bin_obj, NULL);
+static void add_entry_offset(ELFOBJ *bin, RzList *result) {
+	ut64 addr = Elf_(rz_bin_elf_get_entry_offset)(bin);
+	if (addr == UT64_MAX) {
+		return;
+	}
 
-	RzBinAddr *ptr = NULL;
-	ELFOBJ *obj = bf->o->bin_obj;
-	RzList *ret = rz_list_newf((RzListFree)free);
-	if (!ret) {
+	RzBinAddr *tmp = rz_bin_addr_new(bin, addr);
+	if (!tmp) {
+		return;
+	}
+
+	tmp->hpaddr = E_ENTRYPOINT_OFFSET;
+	tmp->hvaddr = bin->baddr + tmp->hpaddr;
+
+	if (tmp->vaddr != (ut64)bin->ehdr.e_entry && Elf_(rz_bin_elf_is_executable)(bin)) {
+		eprintf("Cannot determine entrypoint, using 0x%08" PFMT64x ".\n", tmp->vaddr);
+	}
+
+	rz_list_append(result, tmp);
+}
+
+static void add_java_libraries(ELFOBJ *bin, RzList *result) {
+	RzBinElfSymbol *symbol;
+	rz_bin_elf_foreach_symbols(bin, symbol) {
+		if (symbol->name && rz_str_startswith(symbol->name, "Java") && rz_str_endswith(symbol->name, "_init")) {
+			RzBinAddr *tmp = rz_bin_addr_new(bin, symbol->offset);
+			tmp->type = RZ_BIN_ENTRY_TYPE_INIT;
+
+			rz_list_append(result, tmp);
+			break;
+		}
+	}
+}
+
+static RzList *entries(RzBinFile *bf) {
+	rz_return_val_if_fail(bf && bf->o, NULL);
+
+	ELFOBJ *bin = bf->o->bin_obj;
+
+	RzList *result = rz_list_newf((RzListFree)free);
+	if (!result) {
 		return NULL;
 	}
-	ut64 pa = Elf_(rz_bin_elf_get_entry_offset)(obj);
-	if (pa != UT64_MAX) {
-		if (!(ptr = RZ_NEW0(RzBinAddr))) {
-			return ret;
-		}
-		ptr->paddr = pa;
-		ptr->vaddr = Elf_(rz_bin_elf_p2v_new)(obj, ptr->paddr);
-		ptr->hpaddr = 0x18; // e_entry offset in ELF header
-		ptr->hvaddr = UT64_MAX;
 
-		if (ptr->vaddr != (ut64)obj->ehdr.e_entry && Elf_(rz_bin_elf_is_executable)(obj)) {
-			eprintf("Cannot determine entrypoint, using 0x%08" PFMT64x ".\n", ptr->vaddr);
-		}
-
-		if (bf->o->sections) {
-			RzListIter *iter;
-			RzBinSection *section;
-			rz_list_foreach_prev(bf->o->sections, iter, section) {
-				if (!strcmp(section->name, "ehdr")) {
-					ptr->hvaddr = section->vaddr + ptr->hpaddr;
-					break;
-				}
-			}
-		}
-		if (obj->ehdr.e_machine == EM_ARM) {
-			int bin_bits = Elf_(rz_bin_elf_get_bits)(obj);
-			if (bin_bits != 64) {
-				ptr->bits = 32;
-				if (ptr->vaddr & 1) {
-					ptr->vaddr--;
-					ptr->bits = 16;
-				}
-				if (ptr->paddr & 1) {
-					ptr->paddr--;
-					ptr->bits = 16;
-				}
-			}
-		}
-		rz_list_append(ret, ptr);
-	}
+	add_entry_offset(bin, result);
 
 	// add entrypoint for jni libraries
 	// NOTE: this is slow, we shouldnt find for java constructors here
-	if (!Elf_(rz_bin_elf_has_symbols)(obj)) {
-		return ret;
+	if (!Elf_(rz_bin_elf_has_symbols)(bin)) {
+		return result;
 	}
 
-	RzBinElfSymbol *symbol;
-	rz_bin_elf_foreach_symbols(obj, symbol) {
-		if (symbol->name && !strncmp(symbol->name, "Java", 4)) {
-			if (rz_str_endswith(symbol->name, "_init")) {
-				if (!(ptr = RZ_NEW0(RzBinAddr))) {
-					return ret;
-				}
-				ptr->paddr = symbol->offset;
-				ptr->vaddr = Elf_(rz_bin_elf_p2v_new)(obj, ptr->paddr);
-				ptr->hpaddr = UT64_MAX;
-				ptr->type = RZ_BIN_ENTRY_TYPE_INIT;
-				rz_list_append(ret, ptr);
-				break;
-			}
-		}
-	}
-	int bin_bits = Elf_(rz_bin_elf_get_bits)(bf->o->bin_obj);
-	process_constructors(bf, ret, bin_bits < 32 ? 32 : bin_bits);
-	return ret;
+	add_java_libraries(bin, result);
+
+	int bits = Elf_(rz_bin_elf_get_bits)(bin);
+	process_constructors(bf, result, bits < 32 ? 32 : bits);
+
+	return result;
 }
 
 static RzList *symbols(RzBinFile *bf) {

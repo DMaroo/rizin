@@ -3203,7 +3203,7 @@ NAME=iH (file x86_64)
 FILE=bins/elf/analysis/hello-linux-x86_64
 CMDS=iH
 EXPECT=<<EOF
-0x00000000  ELF64       0x464c457f
+0x00000000  ELF MAGIC   0x464c457f
 0x00000010  Type        0x0002
 0x00000012  Machine     0x003e
 0x00000014  Version     0x00000001

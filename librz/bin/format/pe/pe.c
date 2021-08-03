@@ -13,7 +13,6 @@
 #include <time.h>
 #include <ht_uu.h>
 
-#define PE_IMAGE_FILE_MACHINE_RPI2 452
 #define MAX_METADATA_STRING_LENGTH 256
 #define bprintf \
 	if (bin->verbose) \
@@ -53,9 +52,9 @@ static inline int is_thumb(struct PE_(rz_bin_pe_obj_t) * bin) {
 
 static inline int is_arm(struct PE_(rz_bin_pe_obj_t) * bin) {
 	switch (bin->nt_headers->file_header.Machine) {
-	case PE_IMAGE_FILE_MACHINE_RPI2: // 462
 	case PE_IMAGE_FILE_MACHINE_ARM:
 	case PE_IMAGE_FILE_MACHINE_ARM64:
+	case PE_IMAGE_FILE_MACHINE_ARMNT:
 	case PE_IMAGE_FILE_MACHINE_THUMB:
 		return 1;
 	}
@@ -3316,8 +3315,8 @@ char *PE_(rz_bin_pe_get_arch)(struct PE_(rz_bin_pe_obj_t) * bin) {
 	case PE_IMAGE_FILE_MACHINE_ALPHA64:
 		arch = strdup("alpha");
 		break;
-	case PE_IMAGE_FILE_MACHINE_RPI2: // 462
 	case PE_IMAGE_FILE_MACHINE_ARM:
+	case PE_IMAGE_FILE_MACHINE_ARMNT:
 	case PE_IMAGE_FILE_MACHINE_THUMB:
 		arch = strdup("arm");
 		break;

@@ -14,8 +14,8 @@ FILE=bins/elf/arm-init
 CMDS=iee
 EXPECT=<<EOF
 [Constructors]
-vaddr=0x000002e4 paddr=0x000002e4 hvaddr=0x00001ed0 hpaddr=0x00000ed0 type=fini
 vaddr=0x00000344 paddr=0x00000344 hvaddr=0x00001ed8 hpaddr=0x00000ed8 type=init
+vaddr=0x000002e4 paddr=0x000002e4 hvaddr=0x00001ed0 hpaddr=0x00000ed0 type=fini
 
 2 entrypoints
 EOF

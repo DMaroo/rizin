@@ -4127,6 +4127,8 @@ vaddr      paddr      target     type   name
 0x000003f0 16 sym.imp.puts
 0x00000400 16 sym.imp.__libc_start_main
 0x00000420 1 entry0
+0x00000500 1 entry.fini0
+0x00000550 1 entry.init0
 0x00000590 256 main
 0x00000590 60 sym.main
 0x0000064c 4 obj._IO_stdin_used

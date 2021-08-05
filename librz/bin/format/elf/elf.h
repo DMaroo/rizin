@@ -111,6 +111,7 @@ typedef struct rz_bin_elf_symbol_t {
 	const char *bind;
 	const char *type;
 	RZ_OWN char *name;
+	int bits;
 } RzBinElfSymbol;
 
 typedef struct rz_bin_elf_reloc_t {
@@ -197,6 +198,15 @@ RZ_OWN ELFOBJ *Elf_(rz_bin_elf_new_buf)(RZ_NONNULL RzBuffer *buf, RZ_NONNULL RzB
 void Elf_(rz_bin_elf_free)(RZ_NONNULL ELFOBJ *bin);
 ut64 Elf_(rz_bin_elf_p2v_new)(RZ_NONNULL ELFOBJ *bin, ut64 paddr);
 ut64 Elf_(rz_bin_elf_v2p_new)(RZ_NONNULL ELFOBJ *bin, ut64 vaddr);
+
+// elf_arm.c
+#define rz_bin_elf_fix_arm_object_dispatch(bin, object) \
+	Elf_(rz_bin_elf_fix_arm_object)(bin, &object->paddr, &object->vaddr, &object->bits)
+
+bool Elf_(rz_bin_elf_is_arm_binary)(RZ_NONNULL ELFOBJ *bin);
+bool Elf_(rz_bin_elf_is_thumb_addr)(ut64 addr);
+void Elf_(rz_bin_elf_fix_arm_object)(RZ_NONNULL ELFOBJ *bin, RZ_NONNULL ut64 *paddr, RZ_NONNULL ut64 *vaddr, RZ_NONNULL int *bits);
+void Elf_(rz_bin_elf_fix_arm_symbol)(RZ_NONNULL ELFOBJ *bin, RZ_NONNULL RzBinElfSymbol *symbol);
 
 // elf_corefile.c
 ut64 Elf_(rz_bin_elf_get_sp_val)(RZ_NONNULL ELFOBJ *bin);
@@ -303,8 +313,8 @@ void Elf_(rz_bin_elf_strtab_free)(RzBinElfStrtab *ptr);
 typedef bool (*RzBinElfSymbolFilter)(ELFOBJ *bin, Elf_(Sym) * entry, bool is_dynamic);
 
 Elf_(Word) Elf_(rz_bin_elf_get_number_of_dynamic_symbols)(RZ_NONNULL ELFOBJ *bin);
-RZ_OWN RzVector *Elf_(rz_bin_elf_compute_symbols)(ELFOBJ *bin, RzBinElfSymbolFilter filter);
 RZ_BORROW RzBinElfSymbol *Elf_(rz_bin_elf_get_symbol)(RZ_NONNULL ELFOBJ *bin, ut32 ordinal);
+RZ_OWN RzVector *Elf_(rz_bin_elf_compute_symbols)(ELFOBJ *bin, RzBinElfSymbolFilter filter);
 RZ_OWN RzVector *Elf_(rz_bin_elf_symbols_new)(RZ_NONNULL ELFOBJ *bin);
 bool Elf_(rz_bin_elf_has_symbols)(RZ_NONNULL ELFOBJ *bin);
 

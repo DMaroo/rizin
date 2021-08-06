@@ -40,7 +40,7 @@ bool Elf_(rz_bin_elf_is_thumb_addr)(ut64 addr) {
 void Elf_(rz_bin_elf_fix_arm_object)(RZ_NONNULL ELFOBJ *bin, RZ_NONNULL ut64 *paddr, RZ_NONNULL ut64 *vaddr, RZ_NONNULL int *bits) {
 	rz_return_if_fail(bin && paddr && vaddr && bits);
 
-	*bits = Elf_(rz_bin_elf_get_bits)(bin);
+	*bits = bin->bits;
 
 	if (*bits == 64) {
 		return;

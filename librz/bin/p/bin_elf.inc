@@ -342,12 +342,11 @@ static RzList *maps_unpatched(RzBinFile *bf) {
 	return ret;
 }
 
-static ut64 reloc_target_size(struct Elf_(rz_bin_elf_obj_t) * obj) {
-	ut64 r = Elf_(rz_bin_elf_get_bits)(obj);
-	if (!r) {
+static ut64 reloc_target_size(ELFOBJ *obj) {
+	if (!obj->bits) {
 		return 8;
 	}
-	return r / 8;
+	return obj->bits / 8;
 }
 
 /// base vaddr where to map the artificial reloc target vfile
@@ -1083,7 +1082,7 @@ static RzList *entries(RzBinFile *bf) {
 			}
 		}
 	}
-	int bin_bits = Elf_(rz_bin_elf_get_bits)(bf->o->bin_obj);
+	int bin_bits = obj->bits;
 	process_constructors(bf, ret, bin_bits < 32 ? 32 : bin_bits);
 	return ret;
 }
@@ -1292,7 +1291,7 @@ static RzBinInfo *info(RzBinFile *bf) {
 	ret->file = bf->file
 		? strdup(bf->file)
 		: NULL;
-	void *obj = bf->o->bin_obj;
+	ELFOBJ *obj = bf->o->bin_obj;
 	if ((str = Elf_(rz_bin_elf_get_rpath)(obj))) {
 		ret->rpath = strdup(str);
 		free(str);
@@ -1345,7 +1344,7 @@ static RzBinInfo *info(RzBinFile *bf) {
 	}
 
 	ret->rclass = strdup("elf");
-	ret->bits = Elf_(rz_bin_elf_get_bits)(obj);
+	ret->bits = obj->bits;
 	if (!strcmp(ret->arch, "avr")) {
 		ret->bits = 16;
 	}

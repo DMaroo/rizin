@@ -54,7 +54,7 @@ bool test_cmp_mem_data(void) {
 
 	RzCompareData *cmp = rz_core_cmp_mem_data(core, 52, (ut8 *)la, 24);
 	mu_assert_notnull(cmp, "RzCompareData object null");
-	mu_assert_eq(cmp->len, 24, "Incorrect length");
+	mu_assert_eq(cmp->len, 42, "Incorrect length");
 	mu_assert_eq(cmp->addr1, 52, "Incorrect addr1");
 	mu_assert_eq(cmp->addr2, UT64_MAX, "Incorrect addr2");
 	mu_assert_memeq(cmp->data1, (ut8 *)la, 24, "Memory at offset 52 does not match");
